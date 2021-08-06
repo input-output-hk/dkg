@@ -6,6 +6,7 @@
 
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
+use std::ops::{Add, Sub, Mul};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 /// ElGamal public key. pk = sk * G, where sk is the `SecretKey` and G is the group
@@ -27,7 +28,7 @@ pub struct Keypair<G: PrimeGroupElement> {
     pub public_key: PublicKey<G>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 /// ElGamal ciphertext. Given a message M represented by a group element, and ElGamal
 /// ciphertext consists of (r * G; M + r * `PublicKey`), where r is a random `Scalar`.
 pub struct Ciphertext<G: PrimeGroupElement> {
@@ -145,54 +146,45 @@ impl<G: PrimeGroupElement> Ciphertext<G> {
         (&self.e1, &self.e2)
     }
 }
-//
-// impl<'a, 'b, G: PrimeGroupElement> Add<&'b Ciphertext<G>> for &'a Ciphertext<G> {
-//     type Output = Ciphertext<G>;
-//
-//     fn add(self, other: &'b Ciphertext<G>) -> Ciphertext<G> {
-//         Ciphertext {
-//             e1: &self.e1 + &other.e1,
-//             e2: &self.e2 + &other.e2,
-//         }
-//     }
-// }
-//
-// std_ops_gen!(Ciphertext, Add, Ciphertext, Ciphertext, add);
-//
-// impl<'a, 'b, G: PrimeGroupElement> Sub<&'b Ciphertext> for &'a Ciphertext {
-//     type Output = Ciphertext;
-//
-//     fn sub(self, other: &'b Ciphertext) -> Ciphertext {
-//         Ciphertext {
-//             e1: &self.e1 - &other.e1,
-//             e2: &self.e2 - &other.e2,
-//         }
-//     }
-// }
-//
-// std_ops_gen!(Ciphertext, Sub, Ciphertext, Ciphertext, sub);
-//
-// impl<'a, 'b, G: PrimeGroupElement> Mul<&'b Scalar> for &'a Ciphertext {
-//     type Output = Ciphertext;
-//     fn mul(self, rhs: &'b Scalar) -> Self::Output {
-//         Ciphertext {
-//             e1: &self.e1 * rhs,
-//             e2: &self.e2 * rhs,
-//         }
-//     }
-// }
-//
-// std_ops_gen!(Ciphertext, Mul, Scalar, Ciphertext, mul);
-//
-// impl<'a> Mul<u64> for &'a Ciphertext {
-//     type Output = Ciphertext;
-//     fn mul(self, rhs: u64) -> Self::Output {
-//         Ciphertext {
-//             e1: &self.e1 * rhs,
-//             e2: &self.e2 * rhs,
-//         }
-//     }
-// }
+
+impl<'a, 'b, G: PrimeGroupElement> Add<&'b Ciphertext<G>> for &'a Ciphertext<G> {
+    type Output = Ciphertext<G>;
+
+    fn add(self, other: &'b Ciphertext<G>) -> Ciphertext<G> {
+        Ciphertext::<G> {
+            e1: self.e1 + other.e1,
+            e2: self.e2 + other.e2,
+        }
+    }
+}
+
+std_ops_gen!(Ciphertext, PrimeGroupElement, Add, Ciphertext, Ciphertext, add);
+
+impl<'a, 'b, G: PrimeGroupElement> Sub<&'b Ciphertext<G>> for &'a Ciphertext<G> {
+    type Output = Ciphertext<G>;
+
+    fn sub(self, other: &'b Ciphertext<G>) -> Ciphertext<G> {
+        Ciphertext {
+            e1: self.e1 - other.e1,
+            e2: self.e2 - other.e2,
+        }
+    }
+}
+
+std_ops_gen!(Ciphertext, PrimeGroupElement, Sub, Ciphertext, Ciphertext, sub);
+
+impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a Ciphertext<G> {
+    type Output = Ciphertext<G>;
+    fn mul(self, rhs: &'b G::CorrespondingScalar) -> Self::Output {
+        Ciphertext {
+            e1: self.e1 * rhs,
+            e2: self.e2 * rhs,
+        }
+    }
+}
+
+// todo: get some of this
+// std_ops_gen!(Ciphertext, PrimeGroupElement, Mul, G::CorrespondingScalar, Ciphertext, mul);
 
 #[cfg(test)]
 mod tests {
@@ -235,14 +227,14 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn zero() {
-    //     let cipher = Ciphertext {
-    //         e1: PrimeGroupElement::zero(),
-    //         e2: PrimeGroupElement::zero(),
-    //     };
-    //     assert_eq!(Ciphertext::zero(), cipher)
-    // }
+    #[test]
+    fn zero() {
+        let cipher = Ciphertext {
+            e1: RistrettoPoint::zero(),
+            e2: RistrettoPoint::zero(),
+        };
+        assert_eq!(Ciphertext::zero(), cipher)
+    }
 
     #[test]
     fn encrypt_decrypt_point() {
@@ -269,18 +261,26 @@ mod tests {
             assert_eq!(m * RistrettoPoint::generator(), r)
         }
     }
-    //
-    // #[test]
-    // fn symmetric_encrypt_decrypt() {
-    //     let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
-    //     let k = SecretKey::generate(&mut rng);
-    //     let k = Keypair::from_secretkey(k);
-    //
-    //     let m = [1, 3, 4, 5, 6, 7];
-    //
-    //     let encrypted = &k.public_key.hybrid_encrypt(&m, &mut rng);
-    //     let result = &k.secret_key.hybrid_decrypt(&encrypted);
-    //
-    //     assert_eq!(&m[..], &result[..])
-    // }
+
+    #[test]
+    fn linear_ops_ctxts() {
+        let mut rng = OsRng;
+
+        let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let m = RScalar::from_u64(24);
+        let cipher = keypair.public_key.encrypt(&m, &mut rng);
+
+        let cipher_2 = cipher + cipher;
+        let r_2 = keypair.secret_key.decrypt_point(&cipher_2);
+        assert_eq!(RScalar::from_u64(48) * RistrettoPoint::generator(), r_2);
+
+        let cipher_1 = cipher_2 - cipher;
+        let r_1 = keypair.secret_key.decrypt_point(&cipher_1);
+        assert_eq!(m * RistrettoPoint::generator(), r_1);
+
+        // todo: need to handle the macro for cipher * scalar
+        let cipher_7 = &cipher * &RScalar::from_u64(2);
+        let r_7 = keypair.secret_key.decrypt_point(&cipher_7);
+        assert_eq!(RScalar::from_u64(48) * RistrettoPoint::generator(), r_7);
+    }
 }
