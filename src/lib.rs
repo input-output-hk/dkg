@@ -1,12 +1,15 @@
 #![warn(unused, future_incompatible, nonstandard_style, rust_2018_idioms)]
 #![allow(non_snake_case)]
+//
+// // The following related to some feature that will at some point stabilise
+// // https://github.com/rust-lang/rust/issues/60551#issuecomment-855861197
+// #![feature(associated_consts)]
+// #![feature(const_generics)]
 mod cryptography;
 
-
-use std::ops::{Add, Mul, Neg, Sub};
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar as RScalar;
+use std::ops::{Add, Mul, Neg, Sub, AddAssign};
 use std::fmt::Debug;
+use rand_core::{CryptoRng, RngCore};
 
 pub trait Scalar:
     Copy
@@ -20,14 +23,18 @@ pub trait Scalar:
     + Add<Self, Output = Self>
     + Sub<Self, Output = Self>
     + Mul<Self, Output = Self>
+    + AddAssign<Self>
     + for<'a> Add<&'a Self, Output = Self>
     + for<'a> Sub<&'a Self, Output = Self>
     + Mul<Self, Output = Self>
     + core::iter::Sum<Self>
     + for<'a> core::iter::Sum<&'a Self>
 {
-    const BYTES_LEN: usize;
     type Item;
+
+    fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
+
+    fn from_u64(scalar: u64) -> Self;
 }
 
 pub trait PrimeGroupElement:
@@ -48,52 +55,10 @@ pub trait PrimeGroupElement:
     + core::iter::Sum<Self>
     + for<'a> core::iter::Sum<&'a Self>
 {
-    const BYTES_LEN: usize;
     type Item;
     type CorrespondingScalar: Scalar;
 
-    fn perform(&self) -> Self::Item;
-    fn multiply(&self, scalar: &Self::CorrespondingScalar) -> Self::Item;
-}
+    fn generator() -> Self;
 
-impl Scalar for RScalar {
-    const BYTES_LEN: usize = 32;
-    type Item = RScalar;
-}
-
-impl PrimeGroupElement for RistrettoPoint {
-    const BYTES_LEN: usize = 32;
-    type Item = RistrettoPoint;
-    type CorrespondingScalar = RScalar;
-    fn perform(&self) -> RistrettoPoint {
-        self + self + self
-    }
-    fn multiply(&self, scalar: &RScalar) -> RistrettoPoint {
-        scalar * self
-    }
-}
-
-fn trying_it<A: PrimeGroupElement> (value: &A) -> A::Item {
-    value.perform()
-}
-
-fn trying_mult<A: PrimeGroupElement> (value: &A, scalar: &A::CorrespondingScalar) -> A::Item {
-    value.multiply(scalar)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-    #[test]
-    fn it_works() {
-        let point = RISTRETTO_BASEPOINT_POINT;
-        let scalar = RScalar::from(14u8);
-        let exp_mul = scalar * point;
-        let test = trying_it::<RistrettoPoint>(&point);
-        let test2 = trying_mult::<RistrettoPoint>(&point, &scalar);
-
-        assert_eq!(exp_mul, test2);
-        assert_eq!(test, point + point + point);
-    }
+    fn zero() -> Self;
 }
