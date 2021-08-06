@@ -4,7 +4,7 @@
 //! corresponding structures. In particular, we use (lifted) ElGamal cryptosystem, and combine with ChaCha
 //! stream cipher to produce a hybrid encryption scheme.
 
-use chain_crypto::ec::{GroupElement, Scalar};
+use crate::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Mul, Sub};
 
@@ -16,54 +16,48 @@ use std::fmt;
 #[derive(Debug, Clone, Eq, PartialEq)]
 /// ElGamal public key. pk = sk * G, where sk is the `SecretKey` and G is the group
 /// generator.
-pub struct PublicKey {
-    pub pk: GroupElement,
+pub struct PublicKey<G: PrimeGroupElement> {
+    pub pk: G,
 }
 
 #[derive(Clone)]
 /// ElGamal secret key
-pub struct SecretKey {
-    pub sk: Scalar,
+pub struct SecretKey<S: Scalar> {
+    pub sk: S,
 }
 
 #[derive(Clone)]
 /// ElGamal keypair
-pub struct Keypair {
-    pub secret_key: SecretKey,
-    pub public_key: PublicKey,
+pub struct Keypair<G: PrimeGroupElement> {
+    pub secret_key: SecretKey<G::CorrespondingScalar>,
+    pub public_key: PublicKey<G>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// ElGamal ciphertext. Given a message M represented by a group element, and ElGamal
 /// ciphertext consists of (r * G; M + r * `PublicKey`), where r is a random `Scalar`.
-pub struct Ciphertext {
-    pub(crate) e1: GroupElement,
-    pub(crate) e2: GroupElement,
+pub struct Ciphertext<G: PrimeGroupElement> {
+    pub(crate) e1: G,
+    pub(crate) e2: G,
 }
 
 #[derive(Clone)]
-pub struct HybridCiphertext {
+pub struct HybridCiphertext<G: PrimeGroupElement> {
     // ElGamal Ciphertext
-    e1: Ciphertext,
+    e1: Ciphertext<G>,
     // Symmetric encrypted message
     e2: Box<[u8]>,
-}
-
-impl fmt::Debug for HybridCiphertext {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Point: {:?}\nBox: {:?}", self.e1.to_bytes(), self.e2)
-    }
 }
 
 /// The hybrid encryption scheme uses a group element as a
 /// representation of the symmetric key. This facilitates
 /// its exchange using ElGamal encryption.
-pub struct SymmetricKey {
-    group_repr: GroupElement,
+pub struct SymmetricKey<G: PrimeGroupElement> {
+    group_repr: G,
 }
 
-impl PublicKey {
-    pub const BYTES_LEN: usize = GroupElement::BYTES_LEN;
+impl<G: PrimeGroupElement> PublicKey<G> {
+    pub const BYTES_LEN: usize = PrimeGroupElement::BYTES_LEN;
 
     pub fn to_bytes(&self) -> Vec<u8> {
         self.pk.to_bytes().to_vec()
@@ -71,12 +65,12 @@ impl PublicKey {
 
     pub fn from_bytes(buf: &[u8]) -> Option<Self> {
         Some(Self {
-            pk: GroupElement::from_bytes(buf)?,
+            pk: PrimeGroupElement::from_bytes(buf)?,
         })
     }
 
     /// Given a `message` represented as a group element, return a ciphertext.
-    pub(crate) fn encrypt_point<R>(&self, message: &GroupElement, rng: &mut R) -> Ciphertext
+    pub(crate) fn encrypt_point<R>(&self, message: &G, rng: &mut R) -> Ciphertext<G>
     where
         R: RngCore + CryptoRng,
     {
@@ -86,7 +80,7 @@ impl PublicKey {
 
     // Given a `message` represented as a group element, return a ciphertext and the
     // randomness used.
-    fn encrypt_point_return_r<R>(&self, message: &GroupElement, rng: &mut R) -> (Ciphertext, Scalar)
+    fn encrypt_point_return_r<R>(&self, message: &G, rng: &mut R) -> (Ciphertext<G>, G::CorrespondingScalar)
     where
         R: RngCore + CryptoRng,
     {
@@ -98,41 +92,41 @@ impl PublicKey {
     // return the corresponding ciphertext. This function should only be called when the
     // randomness value needs to be a particular value (e.g. verification procedure of the unit vector ZKP).
     // Otherwise, `encrypt_point` should be used.
-    fn encrypt_point_with_r(&self, message: &GroupElement, randomness: &Scalar) -> Ciphertext {
+    fn encrypt_point_with_r(&self, message: &G, randomness: &G::CorrespondingScalar) -> Ciphertext<G> {
         Ciphertext {
-            e1: &GroupElement::generator() * randomness,
+            e1: &PrimeGroupElement::generator() * randomness,
             e2: message + &(&self.pk * randomness),
         }
     }
 
     /// Given a `message` represented as a `Scalar`, return a ciphertext using the
     /// "lifted ElGamal" mechanism. Mainly, return (r * G; `message` * G + r * `self`)
-    pub(crate) fn encrypt<R>(&self, message: &Scalar, rng: &mut R) -> Ciphertext
+    pub(crate) fn encrypt<R>(&self, message: &G::CorrespondingScalar, rng: &mut R) -> Ciphertext<G>
     where
         R: RngCore + CryptoRng,
     {
-        self.encrypt_point(&(&GroupElement::generator() * message), rng)
+        self.encrypt_point(&(&PrimeGroupElement::generator() * message), rng)
     }
 
     /// Given a `message` represented as a `Scalar`, return a ciphertext and return
     /// the randomness used.
-    pub(crate) fn encrypt_return_r<R>(&self, message: &Scalar, rng: &mut R) -> (Ciphertext, Scalar)
+    pub(crate) fn encrypt_return_r<R>(&self, message: &G::CorrespondingScalar, rng: &mut R) -> (Ciphertext<G>, G::CorrespondingScalar)
     where
         R: RngCore + CryptoRng,
     {
-        self.encrypt_point_return_r(&(&GroupElement::generator() * message), rng)
+        self.encrypt_point_return_r(&(&PrimeGroupElement::generator() * message), rng)
     }
 
     /// Given a `message` represented as a `Scalar`, and some value used as `randomness`,
     /// return the corresponding ciphertext. This function should only be called when the
     /// randomness value is not random (e.g. verification procedure of the unit vector ZKP).
     /// Otherwise, `encrypt_point` should be used.
-    pub(crate) fn encrypt_with_r(&self, message: &Scalar, randomness: &Scalar) -> Ciphertext {
-        self.encrypt_point_with_r(&(&GroupElement::generator() * message), randomness)
+    pub(crate) fn encrypt_with_r(&self, message: &G::CorrespondingScalar, randomness: &G::CorrespondingScalar) -> Ciphertext<G> {
+        self.encrypt_point_with_r(&(&PrimeGroupElement::generator() * message), randomness)
     }
 
     /// Given a `message` passed as bytes, encrypt it using hybrid encryption.
-    pub(crate) fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext
+    pub(crate) fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
     where
         R: RngCore + CryptoRng,
     {
@@ -143,7 +137,7 @@ impl PublicKey {
     }
 }
 
-impl SecretKey {
+impl<G: PrimeGroupElement> SecretKey<G> {
     pub fn generate<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         let sk = Scalar::random(rng);
         Self { sk }
@@ -155,7 +149,7 @@ impl SecretKey {
 
     #[allow(dead_code)]
     /// Decrypt a message using hybrid decryption
-    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext) -> Vec<u8> {
+    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
         let symmetric_key = SymmetricKey {
             group_repr: self.decrypt_point(&ciphertext.e1),
         };
@@ -165,18 +159,18 @@ impl SecretKey {
 
     /// Decrypt ElGamal `Ciphertext` = (`cipher`.e1, `cipher`.e2), by computing
     /// `cipher`.e2 - `self` * `cipher`.e1. This returns the plaintext respresented
-    /// as a `GroupElement`.
-    pub(crate) fn decrypt_point(&self, cipher: &Ciphertext) -> GroupElement {
+    /// as a `PrimeGroupElement`.
+    pub(crate) fn decrypt_point(&self, cipher: &Ciphertext<G>) -> G {
         &(&cipher.e1 * &self.sk.negate()) + &cipher.e2
     }
 }
 
-impl SymmetricKey {
+impl<G: PrimeGroupElement> SymmetricKey<G> {
     /// Generate a new random symmetric key
     pub fn new<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         let exponent = Scalar::random(rng);
         SymmetricKey {
-            group_repr: GroupElement::generator() * &exponent,
+            group_repr: G::generator() * &exponent,
         }
     }
 
@@ -198,11 +192,11 @@ impl SymmetricKey {
     }
 }
 
-impl Keypair {
+impl<G: PrimeGroupElement> Keypair<G> {
     #[allow(dead_code)]
     pub fn from_secretkey(secret_key: SecretKey) -> Self {
         let public_key = PublicKey {
-            pk: &GroupElement::generator() * &secret_key.sk,
+            pk: &PrimeGroupElement::generator() * &secret_key.sk,
         };
         Keypair {
             secret_key,
@@ -213,7 +207,7 @@ impl Keypair {
     /// Generate a keypair for encryption
     pub fn generate<R: RngCore + CryptoRng>(rng: &mut R) -> Keypair {
         let sk = Scalar::random(rng);
-        let pk = &GroupElement::generator() * &sk;
+        let pk = &PrimeGroupElement::generator() * &sk;
         Keypair {
             secret_key: SecretKey { sk },
             public_key: PublicKey { pk },
@@ -223,13 +217,13 @@ impl Keypair {
 
 impl Ciphertext {
     /// Size of the byte representation of `Ciphertext`.
-    pub const BYTES_LEN: usize = GroupElement::BYTES_LEN * 2;
+    pub const BYTES_LEN: usize = PrimeGroupElement::BYTES_LEN * 2;
 
     /// the zero ciphertext
     pub fn zero() -> Self {
         Ciphertext {
-            e1: GroupElement::zero(),
-            e2: GroupElement::zero(),
+            e1: PrimeGroupElement::zero(),
+            e2: PrimeGroupElement::zero(),
         }
     }
 
@@ -242,12 +236,12 @@ impl Ciphertext {
     }
 
     pub fn from_bytes(slice: &[u8]) -> Option<Ciphertext> {
-        let e1 = GroupElement::from_bytes(&slice[..GroupElement::BYTES_LEN])?;
-        let e2 = GroupElement::from_bytes(&slice[GroupElement::BYTES_LEN..])?;
+        let e1 = PrimeGroupElement::from_bytes(&slice[..PrimeGroupElement::BYTES_LEN])?;
+        let e2 = PrimeGroupElement::from_bytes(&slice[PrimeGroupElement::BYTES_LEN..])?;
         Some(Ciphertext { e1, e2 })
     }
 
-    pub fn elements(&self) -> (&GroupElement, &GroupElement) {
+    pub fn elements(&self) -> (&PrimeGroupElement, &PrimeGroupElement) {
         (&self.e1, &self.e2)
     }
 }
@@ -310,8 +304,8 @@ mod tests {
     #[test]
     fn zero() {
         let cipher = Ciphertext {
-            e1: GroupElement::zero(),
-            e2: GroupElement::zero(),
+            e1: PrimeGroupElement::zero(),
+            e2: PrimeGroupElement::zero(),
         };
         assert_eq!(Ciphertext::zero(), cipher)
     }
@@ -322,7 +316,7 @@ mod tests {
 
         for n in 1..5 {
             let keypair = Keypair::generate(&mut rng);
-            let m = GroupElement::generator() * Scalar::from_u64(n * 24);
+            let m = PrimeGroupElement::generator() * Scalar::from_u64(n * 24);
             let cipher = keypair.public_key.encrypt_point(&m, &mut rng);
             let r = keypair.secret_key.decrypt_point(&cipher);
             assert_eq!(m, r)
@@ -338,7 +332,7 @@ mod tests {
             let m = Scalar::from_u64(n * 24);
             let cipher = keypair.public_key.encrypt(&m, &mut rng);
             let r = keypair.secret_key.decrypt_point(&cipher);
-            assert_eq!(m * GroupElement::generator(), r)
+            assert_eq!(m * PrimeGroupElement::generator(), r)
         }
     }
 

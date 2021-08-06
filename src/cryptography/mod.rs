@@ -1,11 +1,12 @@
-mod commitment;
+//! Generic cryptographic procedures used in DKG.
+// mod commitment;
 mod elgamal;
-mod zkps;
+// mod zkps;
 
 pub(crate) use self::{
     commitment::CommitmentKey,
     elgamal::{HybridCiphertext, PublicKey, SecretKey},
-    zkps::{CorrectShareGenerationZkp, UnitVectorZkp},
+    // zkps::{CorrectShareGenerationZkp, UnitVectorZkp},
 };
 
 #[cfg(test)]
