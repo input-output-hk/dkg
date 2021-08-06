@@ -1,5 +1,5 @@
 //! Generic cryptographic procedures used in DKG.
-// mod commitment;
-mod elgamal;
+pub mod commitment;
+pub mod elgamal;
 // mod zkps;
 

@@ -1,84 +1,81 @@
-use crate::tally::Crs;
-use chain_crypto::ec::{GroupElement, Scalar};
+use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 /// Pedersen Commitment key
 #[derive(Clone)]
-pub struct CommitmentKey {
-    pub h: GroupElement,
+pub struct CommitmentKey<G: PrimeGroupElement> {
+    pub h: G,
 }
 
-impl CommitmentKey {
-    pub fn to_bytes(&self) -> [u8; GroupElement::BYTES_LEN] {
-        self.h.to_bytes()
-    }
+impl<G: PrimeGroupElement> CommitmentKey<G> {
 
+    /// Generate a new random commitment key by hashin the input
+    pub fn generate(bytes: &[u8]) -> Self {
+        CommitmentKey::<G> { h: G::from_hash(bytes) }
+    }
     /// Return a commitment with the given opening, `o`
-    pub(crate) fn commit_with_open(&self, o: &Open) -> GroupElement {
+    pub fn commit_with_open(&self, o: &Open<G>) -> G {
         self.commit_with_random(&o.m, &o.r)
     }
 
     // Return a commitment with the given message, `m`,  and opening key, `r`
-    fn commit_with_random(&self, m: &Scalar, r: &Scalar) -> GroupElement {
-        GroupElement::generator() * m + &self.h * r
+    fn commit_with_random(&self, m: &G::CorrespondingScalar, r: &G::CorrespondingScalar) -> G {
+        G::generator() * m + self.h * r
     }
 
     /// Return a commitment, and the used randomness, `r`, where the latter is computed
     /// from a `Rng + CryptoRng`
-    pub(crate) fn commit<R>(&self, m: &Scalar, rng: &mut R) -> (GroupElement, Scalar)
+    pub fn commit<R>(&self, m: &G::CorrespondingScalar, rng: &mut R) -> (G, G::CorrespondingScalar)
     where
         R: CryptoRng + RngCore,
     {
-        let r = Scalar::random(rng);
+        let r = G::CorrespondingScalar::random(rng);
         (self.commit_with_random(m, &r), r)
     }
 
     /// Return a commitment of a boolean value, and the used randomness, `r`, where the latter is computed
     /// from a `Rng + CryptoRng`
-    pub(crate) fn commit_bool<R>(&self, m: bool, rng: &mut R) -> (GroupElement, Scalar)
+    pub fn commit_bool<R>(&self, m: bool, rng: &mut R) -> (G, G::CorrespondingScalar)
     where
         R: CryptoRng + RngCore,
     {
-        let r = Scalar::random(rng);
+        let r = G::CorrespondingScalar::random(rng);
         if m {
-            (GroupElement::generator() + &self.h * &r, r)
+            (G::generator() + self.h * &r, r)
         } else {
-            (&self.h * &r, r)
+            (self.h * &r, r)
         }
     }
 
     /// Verify that a given `commitment` opens to `o` under commitment key `self`
     #[allow(dead_code)]
-    pub fn verify(&self, commitment: &GroupElement, o: &Open) -> bool {
+    pub fn verify(&self, commitment: &G, o: &Open<G>) -> bool {
         let other = self.commit_with_open(o);
         commitment == &other
     }
 }
 
-impl From<Crs> for CommitmentKey {
-    fn from(crs: Crs) -> Self {
-        CommitmentKey { h: crs }
-    }
-}
-
 #[derive(Clone)]
-pub struct Open {
-    pub m: Scalar,
-    pub r: Scalar,
+pub struct Open<G: PrimeGroupElement> {
+    pub m: G::CorrespondingScalar,
+    pub r: G::CorrespondingScalar,
 }
 
-#[cfg(tests)]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use rand_chacha::rand_core::SeedableRng;
-    use rand_chacha::ChaCha20Rng;
+
+    use curve25519_dalek::ristretto::RistrettoPoint;
+    use curve25519_dalek::scalar::Scalar as RScalar;
+
+    use rand_core::OsRng;
+
 
     #[test]
     fn commit_and_open() {
-        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
-        let crs = Crs::from_hash(&[0u8]);
-        let commitment_key = CommitmentKey::from(crs);
-        let message = Scalar::random(&mut rng);
+        let mut rng = OsRng;
+        let commitment_key = CommitmentKey::<RistrettoPoint>::generate(&[0u8]);
+        let message = RScalar::random(&mut rng);
         let (comm, rand) = commitment_key.commit(&message, &mut rng);
 
         let opening = Open {

@@ -5,5 +5,5 @@
 // // https://github.com/rust-lang/rust/issues/60551#issuecomment-855861197
 // #![feature(associated_consts)]
 // #![feature(const_generics)]
-mod cryptography;
+pub mod cryptography;
 mod traits;

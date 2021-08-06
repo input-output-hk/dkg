@@ -202,6 +202,7 @@ mod tests {
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
     use curve25519_dalek::scalar::Scalar as RScalar;
     use curve25519_dalek::traits::Identity;
+    use blake2::Blake2b;
 
     use rand_core::OsRng;
 
@@ -227,6 +228,10 @@ mod tests {
 
         fn zero() -> Self {
             RistrettoPoint::identity()
+        }
+
+        fn from_hash(input: &[u8]) -> Self {
+            RistrettoPoint::hash_from_bytes::<Blake2b>(input)
         }
     }
 

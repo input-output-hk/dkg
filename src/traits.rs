@@ -52,4 +52,6 @@ pub trait PrimeGroupElement:
     fn generator() -> Self;
 
     fn zero() -> Self;
+
+    fn from_hash(input: &[u8]) -> Self;
 }
