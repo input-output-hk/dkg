@@ -3,7 +3,7 @@
 
 #[macro_use]
 mod macros;
-mod traits;
-mod polynomial;
 pub mod cryptography;
 pub mod dkg;
+mod polynomial;
+mod traits;

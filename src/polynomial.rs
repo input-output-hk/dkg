@@ -71,14 +71,14 @@ impl<S: Scalar> Polynomial<S> {
 
     /// Evaluate the polynomial at x=0
     pub fn at_zero(&self) -> S {
-        self.elements[0].clone()
+        self.elements[0]
     }
 
     pub fn get_coefficient_at(&self, degree: usize) -> &S {
         &self.elements[degree]
     }
 
-    pub fn get_coefficients(&self) -> std::slice::Iter<S> {
+    pub fn get_coefficients(&self) -> std::slice::Iter<'_, S> {
         self.elements.iter()
     }
 }
@@ -113,7 +113,7 @@ impl<S: Scalar> std::ops::Mul<Polynomial<S>> for Polynomial<S> {
         for (left_degree, &left_coeff) in self.elements.iter().enumerate() {
             for (right_degree, &right_coeff) in rhs.elements.iter().enumerate() {
                 let degree = left_degree + right_degree;
-                acc[degree] = acc[degree] + (left_coeff * right_coeff);
+                acc[degree] += left_coeff * right_coeff;
             }
         }
         Polynomial { elements: acc }
@@ -135,10 +135,12 @@ mod tests {
         );
         assert_eq!(poly_deg_4.at_zero(), RScalar::one());
 
-        let poly_deg_2 = Polynomial::<RScalar>::new(2).set2(RScalar::from_u64(13), RScalar::from_u64(2));
+        let poly_deg_2 =
+            Polynomial::<RScalar>::new(2).set2(RScalar::from_u64(13), RScalar::from_u64(2));
         let added_polys = poly_deg_4.clone() + poly_deg_2.clone();
 
-        let expected_poly = Polynomial::<RScalar>::from_vec(vec![RScalar::from_u64(14), RScalar::from_u64(5)]);
+        let expected_poly =
+            Polynomial::<RScalar>::from_vec(vec![RScalar::from_u64(14), RScalar::from_u64(5)]);
 
         for (a, b) in added_polys
             .get_coefficients()

@@ -1,7 +1,7 @@
-use std::ops::{Add, Mul, Neg, Sub, AddAssign};
-use std::fmt::Debug;
-use rand_core::{CryptoRng, RngCore};
 use generic_array::{ArrayLength, GenericArray};
+use rand_core::{CryptoRng, RngCore};
+use std::fmt::Debug;
+use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub trait Scalar:
     Copy
@@ -40,7 +40,7 @@ pub trait Scalar:
     fn exp_iter(&self) -> ScalarExp<Self> {
         let next_exp_x = Self::one();
         ScalarExp {
-            x: self.clone(),
+            x: *self,
             next_exp_x,
         }
     }
@@ -59,7 +59,7 @@ impl<S: Scalar> Iterator for ScalarExp<S> {
     type Item = S;
 
     fn next(&mut self) -> Option<S> {
-        let exp_x = self.next_exp_x.clone();
+        let exp_x = self.next_exp_x;
         self.next_exp_x = self.next_exp_x * self.x;
         Some(exp_x)
     }
@@ -108,7 +108,7 @@ pub trait PrimeGroupElement:
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 
     fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
-        where
-            I: IntoIterator<Item = Self::CorrespondingScalar>,
-            J: IntoIterator<Item = Self>;
+    where
+        I: IntoIterator<Item = Self::CorrespondingScalar>,
+        J: IntoIterator<Item = Self>;
 }

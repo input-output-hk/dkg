@@ -1,6 +1,5 @@
-
 /// todo: eventually https://internals.rust-lang.org/t/pre-rfc-module-level-generics/12015
-use crate::cryptography::elgamal::{Ciphertext, HybridCiphertext, PublicKey, SecretKey};
+use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
 use crate::dkg::committee::IndexedEncryptedShares;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
@@ -30,7 +29,7 @@ pub struct MasterPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 impl<G: PrimeGroupElement> MemberSecretShare<G> {
     pub fn to_public(&self) -> MemberPublicShare<G> {
         MemberPublicShare(PublicKey {
-            pk: G::generator() * &self.0.sk,
+            pk: G::generator() * self.0.sk,
         })
     }
 }
@@ -66,9 +65,14 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
     pub(crate) fn decrypt_shares(
         &self,
         shares: IndexedEncryptedShares<G>,
-    ) -> (Option<G::CorrespondingScalar>, Option<G::CorrespondingScalar>) {
-        let comm_scalar = <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.1));
-        let shek_scalar = <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.2));
+    ) -> (
+        Option<G::CorrespondingScalar>,
+        Option<G::CorrespondingScalar>,
+    ) {
+        let comm_scalar =
+            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.1));
+        let shek_scalar =
+            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.2));
 
         (comm_scalar, shek_scalar)
     }
@@ -92,9 +96,9 @@ impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
 impl<G: PrimeGroupElement> MasterPublicKey<G> {
     /// Create an election public key from all the participants of this committee
     pub fn from_participants(pks: &[MemberPublicShare<G>]) -> Self {
-        let mut k = pks[0].0.pk.clone();
+        let mut k = pks[0].0.pk;
         for pk in &pks[1..] {
-            k = k + &pk.0.pk;
+            k = k + pk.0.pk;
         }
         MasterPublicKey(PublicKey { pk: k })
     }
@@ -116,8 +120,8 @@ mod tests {
     fn from_fns() {
         let mut rng = OsRng;
         let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
-        let sk_comm = MemberCommunicationKey::<RistrettoPoint> (keypair.secret_key);
-        let pk_comm = MemberCommunicationPublicKey::<RistrettoPoint> (keypair.public_key);
+        let sk_comm = MemberCommunicationKey::<RistrettoPoint>(keypair.secret_key);
+        let pk_comm = MemberCommunicationPublicKey::<RistrettoPoint>(keypair.public_key);
 
         let pk_comm_exp = sk_comm.to_public();
 

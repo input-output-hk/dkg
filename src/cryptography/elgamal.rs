@@ -6,7 +6,7 @@
 
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
-use std::ops::{Add, Sub, Mul};
+use std::ops::{Add, Mul, Sub};
 
 use cryptoxide::blake2b::Blake2b;
 use cryptoxide::chacha20::ChaCha20;
@@ -56,8 +56,7 @@ pub struct SymmetricKey<G: PrimeGroupElement> {
     group_repr: G,
 }
 
-impl<G: PrimeGroupElement> PublicKey<G>
-{
+impl<G: PrimeGroupElement> PublicKey<G> {
     /// Given a `message` represented as a group element, return a ciphertext.
     pub(crate) fn encrypt_point<R>(&self, message: &G, rng: &mut R) -> Ciphertext<G>
     where
@@ -69,7 +68,11 @@ impl<G: PrimeGroupElement> PublicKey<G>
 
     // Given a `message` represented as a group element, return a ciphertext and the
     // randomness used.
-    fn encrypt_point_return_r<R>(&self, message: &G, rng: &mut R) -> (Ciphertext<G>, G::CorrespondingScalar)
+    fn encrypt_point_return_r<R>(
+        &self,
+        message: &G,
+        rng: &mut R,
+    ) -> (Ciphertext<G>, G::CorrespondingScalar)
     where
         R: RngCore + CryptoRng,
     {
@@ -81,7 +84,11 @@ impl<G: PrimeGroupElement> PublicKey<G>
     // return the corresponding ciphertext. This function should only be called when the
     // randomness value needs to be a particular value (e.g. verification procedure of the unit vector ZKP).
     // Otherwise, `encrypt_point` should be used.
-    fn encrypt_point_with_r(&self, message: &G, randomness: &G::CorrespondingScalar) -> Ciphertext<G> {
+    fn encrypt_point_with_r(
+        &self,
+        message: &G,
+        randomness: &G::CorrespondingScalar,
+    ) -> Ciphertext<G> {
         Ciphertext {
             e1: G::generator() * randomness,
             e2: (self.pk * randomness) + message,
@@ -99,7 +106,11 @@ impl<G: PrimeGroupElement> PublicKey<G>
 
     /// Given a `message` represented as a `Scalar`, return a ciphertext and return
     /// the randomness used.
-    pub(crate) fn encrypt_return_r<R>(&self, message: &G::CorrespondingScalar, rng: &mut R) -> (Ciphertext<G>, G::CorrespondingScalar)
+    pub(crate) fn encrypt_return_r<R>(
+        &self,
+        message: &G::CorrespondingScalar,
+        rng: &mut R,
+    ) -> (Ciphertext<G>, G::CorrespondingScalar)
     where
         R: RngCore + CryptoRng,
     {
@@ -110,14 +121,18 @@ impl<G: PrimeGroupElement> PublicKey<G>
     /// return the corresponding ciphertext. This function should only be called when the
     /// randomness value is not random (e.g. verification procedure of the unit vector ZKP).
     /// Otherwise, `encrypt_point` should be used.
-    pub(crate) fn encrypt_with_r(&self, message: &G::CorrespondingScalar, randomness: &G::CorrespondingScalar) -> Ciphertext<G> {
+    pub(crate) fn encrypt_with_r(
+        &self,
+        message: &G::CorrespondingScalar,
+        randomness: &G::CorrespondingScalar,
+    ) -> Ciphertext<G> {
         self.encrypt_point_with_r(&(G::generator() * message), randomness)
     }
 
     /// Given a `message` passed as bytes, encrypt it using hybrid encryption.
     pub(crate) fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
-        where
-            R: RngCore + CryptoRng,
+    where
+        R: RngCore + CryptoRng,
     {
         let encryption_randomness = G::CorrespondingScalar::random(rng);
         let symmetric_key = SymmetricKey {
@@ -142,7 +157,10 @@ impl<G: PrimeGroupElement> SecretKey<G> {
         (cipher.e1 * (-self.sk)) + cipher.e2
     }
 
-    pub(crate) fn recover_symmetric_key(&self, ciphertext: &HybridCiphertext<G>) -> SymmetricKey<G> {
+    pub(crate) fn recover_symmetric_key(
+        &self,
+        ciphertext: &HybridCiphertext<G>,
+    ) -> SymmetricKey<G> {
         SymmetricKey {
             group_repr: ciphertext.e1 * self.sk,
         }
@@ -223,7 +241,14 @@ impl<'a, 'b, G: PrimeGroupElement> Add<&'b Ciphertext<G>> for &'a Ciphertext<G> 
     }
 }
 
-std_ops_gen!(Ciphertext, PrimeGroupElement, Add, Ciphertext, Ciphertext, add);
+std_ops_gen!(
+    Ciphertext,
+    PrimeGroupElement,
+    Add,
+    Ciphertext,
+    Ciphertext,
+    add
+);
 
 impl<'a, 'b, G: PrimeGroupElement> Sub<&'b Ciphertext<G>> for &'a Ciphertext<G> {
     type Output = Ciphertext<G>;
@@ -236,7 +261,14 @@ impl<'a, 'b, G: PrimeGroupElement> Sub<&'b Ciphertext<G>> for &'a Ciphertext<G> 
     }
 }
 
-std_ops_gen!(Ciphertext, PrimeGroupElement, Sub, Ciphertext, Ciphertext, sub);
+std_ops_gen!(
+    Ciphertext,
+    PrimeGroupElement,
+    Sub,
+    Ciphertext,
+    Ciphertext,
+    sub
+);
 
 impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a Ciphertext<G> {
     type Output = Ciphertext<G>;
@@ -255,15 +287,15 @@ impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a Ciphe
 mod tests {
     use super::*;
 
-    use curve25519_dalek::ristretto::RistrettoPoint;
+    use blake2::Blake2b;
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+    use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar as RScalar;
     use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
-    use blake2::Blake2b;
     use generic_array::typenum::U32;
 
-    use rand_core::OsRng;
     use generic_array::GenericArray;
+    use rand_core::OsRng;
 
     impl Scalar for RScalar {
         type Item = RScalar;
@@ -324,14 +356,15 @@ mod tests {
             array
         }
 
+        // todo: handle this recursive call
         fn from_bytes(bytes: &[u8]) -> Option<Self> {
             RistrettoPoint::from_bytes(bytes)
         }
 
         fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
-            where
-                I: IntoIterator<Item = Self::CorrespondingScalar>,
-                J: IntoIterator<Item = Self>
+        where
+            I: IntoIterator<Item = Self::CorrespondingScalar>,
+            J: IntoIterator<Item = Self>,
         {
             RistrettoPoint::vartime_multiscalar_mul(
                 scalars.into_iter().map(|s| s),

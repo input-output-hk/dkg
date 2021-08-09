@@ -1,6 +1,6 @@
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
-use std::ops::{Mul, Add};
+use std::ops::{Add, Mul};
 
 /// Pedersen Commitment key
 #[derive(Clone, Copy)]
@@ -9,10 +9,11 @@ pub struct CommitmentKey<G: PrimeGroupElement> {
 }
 
 impl<G: PrimeGroupElement> CommitmentKey<G> {
-
     /// Generate a new random commitment key by hashin the input
     pub fn generate(bytes: &[u8]) -> Self {
-        CommitmentKey::<G> { h: G::from_hash(bytes) }
+        CommitmentKey::<G> {
+            h: G::from_hash(bytes),
+        }
     }
     /// Return a commitment with the given opening, `o`
     pub fn commit_with_open(&self, o: &Open<G>) -> G {
@@ -42,9 +43,9 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
     {
         let r = G::CorrespondingScalar::random(rng);
         if m {
-            (G::generator() + self.h * &r, r)
+            (G::generator() + self.h * r, r)
         } else {
-            (self.h * &r, r)
+            (self.h * r, r)
         }
     }
 
@@ -56,12 +57,11 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
     }
 }
 
+// todo: handle these std ops
 impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a CommitmentKey<G> {
     type Output = CommitmentKey<G>;
     fn mul(self, rhs: &'b G::CorrespondingScalar) -> Self::Output {
-        CommitmentKey {
-            h: self.h * rhs
-        }
+        CommitmentKey { h: self.h * rhs }
     }
 }
 
@@ -71,7 +71,6 @@ impl<'a, 'b, G: PrimeGroupElement> Add<&'b G> for &'a CommitmentKey<G> {
         self.h + rhs
     }
 }
-
 
 #[derive(Clone, Copy)]
 pub struct Open<G: PrimeGroupElement> {
@@ -87,7 +86,6 @@ mod tests {
     use curve25519_dalek::scalar::Scalar as RScalar;
 
     use rand_core::OsRng;
-
 
     #[test]
     fn commit_and_open() {
