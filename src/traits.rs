@@ -27,6 +27,41 @@ pub trait Scalar:
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 
     fn from_u64(scalar: u64) -> Self;
+
+    fn zero() -> Self;
+
+    fn one() -> Self;
+
+    fn exp_iter(&self) -> ScalarExp<Self> {
+        let next_exp_x = Self::one();
+        ScalarExp {
+            x: self.clone(),
+            next_exp_x,
+        }
+    }
+}
+
+/// Provides an iterator over the powers of a `Scalar`.
+///
+/// This struct is created by the `exp_iter` function.
+#[derive(Clone)]
+pub struct ScalarExp<S: Scalar> {
+    x: S,
+    next_exp_x: S,
+}
+
+impl<S: Scalar> Iterator for ScalarExp<S> {
+    type Item = S;
+
+    fn next(&mut self) -> Option<S> {
+        let exp_x = self.next_exp_x.clone();
+        self.next_exp_x = self.next_exp_x * self.x;
+        Some(exp_x)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (usize::MAX, None)
+    }
 }
 
 pub trait PrimeGroupElement:

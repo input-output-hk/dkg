@@ -12,8 +12,7 @@ use super::procedure_keys::{
 };
 use crate::cryptography::{HybridCiphertext, PublicKey, SecretKey};
 use crate::math::Polynomial;
-use crate::Crs;
-use chain_crypto::ec::{GroupElement, Scalar};
+use crate::traits::{PrimeGroupElement};
 use rand_core::{CryptoRng, RngCore};
 
 pub type DistributedKeyGeneration = MemberState1;

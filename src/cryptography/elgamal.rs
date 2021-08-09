@@ -275,6 +275,14 @@ mod tests {
         fn from_u64(scalar: u64) -> Self {
             RScalar::from(scalar)
         }
+
+        fn zero() -> Self {
+            RScalar::zero()
+        }
+
+        fn one() -> Self {
+            RScalar::one()
+        }
     }
 
     impl PrimeGroupElement for RistrettoPoint {
