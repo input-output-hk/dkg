@@ -1,7 +1,8 @@
 
 /// todo: eventually https://internals.rust-lang.org/t/pre-rfc-module-level-generics/12015
 use crate::cryptography::elgamal::{Ciphertext, HybridCiphertext, PublicKey, SecretKey};
-use crate::traits::{PrimeGroupElement};
+use crate::dkg::committee::IndexedEncryptedShares;
+use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 /// Committee member secret key share.
@@ -61,16 +62,16 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
     pub fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
         self.0.hybrid_decrypt(ciphertext)
     }
-    //
-    // pub(crate) fn decrypt_shares(
-    //     &self,
-    //     shares: IndexedEncryptedShares,
-    // ) -> (Option<Scalar>, Option<Scalar>) {
-    //     let comm_scalar = Scalar::from_bytes(&self.hybrid_decrypt(&shares.1));
-    //     let shek_scalar = Scalar::from_bytes(&self.hybrid_decrypt(&shares.2));
-    //
-    //     (comm_scalar, shek_scalar)
-    // }
+
+    pub(crate) fn decrypt_shares(
+        &self,
+        shares: IndexedEncryptedShares<G>,
+    ) -> (Option<G::CorrespondingScalar>, Option<G::CorrespondingScalar>) {
+        let comm_scalar = <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.1));
+        let shek_scalar = <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.2));
+
+        (comm_scalar, shek_scalar)
+    }
 }
 
 impl<G: PrimeGroupElement> From<PublicKey<G>> for MemberCommunicationPublicKey<G> {

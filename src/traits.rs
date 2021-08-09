@@ -23,10 +23,15 @@ pub trait Scalar:
     + for<'a> core::iter::Sum<&'a Self>
 {
     type Item;
+    type EncodingSize: ArrayLength<u8>;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 
     fn from_u64(scalar: u64) -> Self;
+
+    fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
+
+    fn from_bytes(bytes: &[u8]) -> Option<Self>;
 
     fn zero() -> Self;
 
@@ -99,4 +104,11 @@ pub trait PrimeGroupElement:
     fn from_hash(input: &[u8]) -> Self;
 
     fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
+
+    fn from_bytes(bytes: &[u8]) -> Option<Self>;
+
+    fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
+        where
+            I: IntoIterator<Item = Self::CorrespondingScalar>,
+            J: IntoIterator<Item = Self>;
 }

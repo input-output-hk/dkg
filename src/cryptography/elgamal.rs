@@ -258,7 +258,7 @@ mod tests {
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
     use curve25519_dalek::scalar::Scalar as RScalar;
-    use curve25519_dalek::traits::Identity;
+    use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
     use blake2::Blake2b;
     use generic_array::typenum::U32;
 
@@ -267,6 +267,7 @@ mod tests {
 
     impl Scalar for RScalar {
         type Item = RScalar;
+        type EncodingSize = U32;
 
         fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
             RScalar::random(rng)
@@ -274,6 +275,21 @@ mod tests {
 
         fn from_u64(scalar: u64) -> Self {
             RScalar::from(scalar)
+        }
+
+        fn to_bytes(&self) -> GenericArray<u8, U32> {
+            let mut array = GenericArray::default();
+            array.copy_from_slice(&self.to_bytes()[..]);
+            array
+        }
+
+        fn from_bytes(bytes: &[u8]) -> Option<Self> {
+            if bytes.len() != 32 {
+                return None;
+            }
+            let mut bits = [0u8; 32];
+            bits.copy_from_slice(bytes);
+            Some(RScalar::from_bits(bits))
         }
 
         fn zero() -> Self {
@@ -306,6 +322,21 @@ mod tests {
             let mut array = GenericArray::default();
             array.copy_from_slice(&self.compress().to_bytes()[..]);
             array
+        }
+
+        fn from_bytes(bytes: &[u8]) -> Option<Self> {
+            RistrettoPoint::from_bytes(bytes)
+        }
+
+        fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
+            where
+                I: IntoIterator<Item = Self::CorrespondingScalar>,
+                J: IntoIterator<Item = Self>
+        {
+            RistrettoPoint::vartime_multiscalar_mul(
+                scalars.into_iter().map(|s| s),
+                points.into_iter().map(|p| p),
+            )
         }
     }
 
