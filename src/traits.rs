@@ -50,6 +50,11 @@ pub trait PrimeGroupElement:
     type Item;
     type CorrespondingScalar: Scalar;
     /// Output size for fixed output digest
+    /// todo: Ideally, it would be much more practical to define an associated constant. While this
+    /// is expected to be included in future versions, it's usage is still quite limited. ,
+    /// https://github.com/rust-lang/rust/issues/60551
+    ///
+    /// Defined as future work for now.
     type EncodingSize: ArrayLength<u8>;
 
     fn generator() -> Self;
