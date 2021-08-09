@@ -5,3 +5,4 @@
 mod macros;
 mod traits;
 pub mod cryptography;
+pub mod dkg;
