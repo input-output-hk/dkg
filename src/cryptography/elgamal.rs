@@ -8,6 +8,10 @@ use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Sub, Mul};
 
+use cryptoxide::blake2b::Blake2b;
+use cryptoxide::chacha20::ChaCha20;
+use cryptoxide::digest::Digest;
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 /// ElGamal public key. pk = sk * G, where sk is the `SecretKey` and G is the group
 /// generator.
@@ -34,6 +38,22 @@ pub struct Keypair<G: PrimeGroupElement> {
 pub struct Ciphertext<G: PrimeGroupElement> {
     pub(crate) e1: G,
     pub(crate) e2: G,
+}
+
+#[derive(Clone)]
+/// Hybrid Ciphertext
+pub struct HybridCiphertext<G: PrimeGroupElement> {
+    // ElGamal Ciphertext
+    e1: G,
+    // Symmetric encrypted message
+    e2: Box<[u8]>,
+}
+
+/// The hybrid encryption scheme uses a group element as a
+/// representation of the symmetric key. This facilitates
+/// its exchange using ElGamal encryption.
+pub struct SymmetricKey<G: PrimeGroupElement> {
+    group_repr: G,
 }
 
 impl<G: PrimeGroupElement> PublicKey<G>
@@ -93,6 +113,20 @@ impl<G: PrimeGroupElement> PublicKey<G>
     pub(crate) fn encrypt_with_r(&self, message: &G::CorrespondingScalar, randomness: &G::CorrespondingScalar) -> Ciphertext<G> {
         self.encrypt_point_with_r(&(G::generator() * message), randomness)
     }
+
+    /// Given a `message` passed as bytes, encrypt it using hybrid encryption.
+    pub(crate) fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
+        where
+            R: RngCore + CryptoRng,
+    {
+        let encryption_randomness = G::CorrespondingScalar::random(rng);
+        let symmetric_key = SymmetricKey {
+            group_repr: self.pk * encryption_randomness,
+        };
+        let e1 = G::generator() * encryption_randomness;
+        let e2 = symmetric_key.process(message).into_boxed_slice();
+        HybridCiphertext { e1, e2 }
+    }
 }
 
 impl<G: PrimeGroupElement> SecretKey<G> {
@@ -107,8 +141,39 @@ impl<G: PrimeGroupElement> SecretKey<G> {
     pub(crate) fn decrypt_point(&self, cipher: &Ciphertext<G>) -> G {
         (cipher.e1 * (-self.sk)) + cipher.e2
     }
+
+    pub(crate) fn recover_symmetric_key(&self, ciphertext: &HybridCiphertext<G>) -> SymmetricKey<G> {
+        SymmetricKey {
+            group_repr: ciphertext.e1 * self.sk,
+        }
+    }
+
+    #[allow(dead_code)]
+    /// Decrypt a message using hybrid decryption
+    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
+        self.recover_symmetric_key(ciphertext)
+            .process(&ciphertext.e2)
+    }
 }
 
+impl<G: PrimeGroupElement> SymmetricKey<G> {
+    // Initialise encryption, by hashing the group element
+    fn initialise_encryption(&self) -> ChaCha20 {
+        let mut out = [0u8; 44];
+        let mut h = Blake2b::new(44);
+        h.input(&self.group_repr.to_bytes());
+        h.result(&mut out);
+        ChaCha20::new(&out[0..32], &out[32..44])
+    }
+
+    // Encrypt/decrypt a message using the symmetric key
+    fn process(&self, m: &[u8]) -> Vec<u8> {
+        let mut key = self.initialise_encryption();
+        let mut dat = m.to_vec();
+        key.process_mut(&mut dat);
+        dat
+    }
+}
 
 impl<G: PrimeGroupElement> Keypair<G> {
     #[allow(dead_code)]
@@ -195,8 +260,10 @@ mod tests {
     use curve25519_dalek::scalar::Scalar as RScalar;
     use curve25519_dalek::traits::Identity;
     use blake2::Blake2b;
+    use generic_array::typenum::U32;
 
     use rand_core::OsRng;
+    use generic_array::GenericArray;
 
     impl Scalar for RScalar {
         type Item = RScalar;
@@ -213,6 +280,7 @@ mod tests {
     impl PrimeGroupElement for RistrettoPoint {
         type Item = RistrettoPoint;
         type CorrespondingScalar = RScalar;
+        type EncodingSize = U32;
 
         fn generator() -> Self {
             RISTRETTO_BASEPOINT_POINT
@@ -224,6 +292,12 @@ mod tests {
 
         fn from_hash(input: &[u8]) -> Self {
             RistrettoPoint::hash_from_bytes::<Blake2b>(input)
+        }
+
+        fn to_bytes(&self) -> GenericArray<u8, U32> {
+            let mut array = GenericArray::default();
+            array.copy_from_slice(&self.compress().to_bytes()[..]);
+            array
         }
     }
 
@@ -260,6 +334,20 @@ mod tests {
             let r = keypair.secret_key.decrypt_point(&cipher);
             assert_eq!(m * RistrettoPoint::generator(), r)
         }
+    }
+
+    #[test]
+    fn symmetric_encrypt_decrypt() {
+        let mut rng = OsRng;
+        let k = SecretKey::<RistrettoPoint>::generate(&mut rng);
+        let k = Keypair::<RistrettoPoint>::from_secretkey(k);
+
+        let m = [1, 3, 4, 5, 6, 7];
+
+        let encrypted = &k.public_key.hybrid_encrypt(&m, &mut rng);
+        let result = &k.secret_key.hybrid_decrypt(&encrypted);
+
+        assert_eq!(&m[..], &result[..])
     }
 
     #[test]

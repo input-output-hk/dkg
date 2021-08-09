@@ -1,6 +1,7 @@
 use std::ops::{Add, Mul, Neg, Sub, AddAssign};
 use std::fmt::Debug;
 use rand_core::{CryptoRng, RngCore};
+use generic_array::{ArrayLength, GenericArray};
 
 pub trait Scalar:
     Copy
@@ -48,10 +49,14 @@ pub trait PrimeGroupElement:
 {
     type Item;
     type CorrespondingScalar: Scalar;
+    /// Output size for fixed output digest
+    type EncodingSize: ArrayLength<u8>;
 
     fn generator() -> Self;
 
     fn zero() -> Self;
 
     fn from_hash(input: &[u8]) -> Self;
+
+    fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
 }
