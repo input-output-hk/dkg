@@ -75,7 +75,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
         rng: &mut R,
         t: usize,
         n: usize,
-        ck: &CommitmentKey<G>, // TODO: document
+        ck: &CommitmentKey<G>,
         committee_pks: &[MemberCommunicationPublicKey<G>],
         my: usize,
     ) -> MemberState1<G> {
@@ -93,7 +93,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
 
         for (ai, &bi) in pshek.get_coefficients().zip(pcomm.get_coefficients()) {
             let apub = G::generator() * ai;
-            let coeff_comm = &(ck * &bi) + &apub;
+            let coeff_comm = (ck.h * &bi) + &apub;
             apubs.push(apub);
             coeff_comms.push(coeff_comm);
         }
@@ -149,7 +149,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
                         .exp_iter()
                         .take(self.threshold + 1);
 
-                let check_element = &(&self.ck * &comm) + &(G::generator() * shek);
+                let check_element = (self.ck.h * &comm) + &(G::generator() * shek);
                 let multi_scalar = G::vartime_multiscalar_multiplication(
                     index_pow,
                     fetched_data.committed_coeffs.clone(),

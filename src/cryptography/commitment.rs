@@ -1,6 +1,5 @@
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
-use std::ops::{Add, Mul};
 
 /// Pedersen Commitment key
 #[derive(Clone, Copy)]
@@ -54,21 +53,6 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
     pub fn verify(&self, commitment: &G, o: &Open<G>) -> bool {
         let other = self.commit_with_open(o);
         commitment == &other
-    }
-}
-
-// todo: handle these std ops
-impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a CommitmentKey<G> {
-    type Output = CommitmentKey<G>;
-    fn mul(self, rhs: &'b G::CorrespondingScalar) -> Self::Output {
-        CommitmentKey { h: self.h * rhs }
-    }
-}
-
-impl<'a, 'b, G: PrimeGroupElement> Add<&'b G> for &'a CommitmentKey<G> {
-    type Output = G;
-    fn add(self, rhs: &'b G) -> Self::Output {
-        self.h + rhs
     }
 }
 

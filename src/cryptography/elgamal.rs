@@ -289,7 +289,7 @@ mod tests {
 
     use blake2::Blake2b;
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-    use curve25519_dalek::ristretto::RistrettoPoint;
+    use curve25519_dalek::ristretto::{RistrettoPoint, CompressedRistretto};
     use curve25519_dalek::scalar::Scalar as RScalar;
     use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
     use generic_array::typenum::U32;
@@ -356,9 +356,9 @@ mod tests {
             array
         }
 
-        // todo: handle this recursive call
         fn from_bytes(bytes: &[u8]) -> Option<Self> {
-            RistrettoPoint::from_bytes(bytes)
+            let compressed_point = CompressedRistretto::from_slice(bytes);
+            compressed_point.decompress()
         }
 
         fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
