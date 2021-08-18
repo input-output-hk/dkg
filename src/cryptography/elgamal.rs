@@ -280,8 +280,7 @@ impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a Ciphe
     }
 }
 
-// todo: get some of this
-// std_ops_gen!(Ciphertext, PrimeGroupElement, Mul, G::CorrespondingScalar, Ciphertext, mul);
+std_ops_gen_nsym!(Ciphertext, PrimeGroupElement, Mul, Ciphertext, mul);
 
 #[cfg(test)]
 mod tests {
@@ -289,7 +288,7 @@ mod tests {
 
     use blake2::Blake2b;
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-    use curve25519_dalek::ristretto::{RistrettoPoint, CompressedRistretto};
+    use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
     use curve25519_dalek::scalar::Scalar as RScalar;
     use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
     use generic_array::typenum::U32;
@@ -416,8 +415,8 @@ mod tests {
 
         let m = [1, 3, 4, 5, 6, 7];
 
-        let encrypted = &k.public_key.hybrid_encrypt(&m, &mut rng);
-        let result = &k.secret_key.hybrid_decrypt(&encrypted);
+        let encrypted = k.public_key.hybrid_encrypt(&m, &mut rng);
+        let result = k.secret_key.hybrid_decrypt(&encrypted);
 
         assert_eq!(&m[..], &result[..])
     }

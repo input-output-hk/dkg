@@ -93,7 +93,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
 
         for (ai, &bi) in pshek.get_coefficients().zip(pcomm.get_coefficients()) {
             let apub = G::generator() * ai;
-            let coeff_comm = (ck.h * &bi) + &apub;
+            let coeff_comm = (ck.h * bi) + apub;
             apubs.push(apub);
             coeff_comms.push(coeff_comm);
         }
@@ -149,7 +149,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
                         .exp_iter()
                         .take(self.threshold + 1);
 
-                let check_element = (self.ck.h * &comm) + &(G::generator() * shek);
+                let check_element = self.ck.h * comm + G::generator() * shek;
                 let multi_scalar = G::vartime_multiscalar_multiplication(
                     index_pow,
                     fetched_data.committed_coeffs.clone(),
@@ -184,9 +184,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
     }
 
     pub fn public_key(&self) -> MemberPublicShare<G> {
-        MemberPublicShare(PublicKey {
-            pk: self.apubs[0],
-        })
+        MemberPublicShare(PublicKey { pk: self.apubs[0] })
     }
 }
 

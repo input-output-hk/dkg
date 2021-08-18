@@ -27,3 +27,17 @@ macro_rules! std_ops_gen {
         }
     };
 }
+
+// Some operations are not symmetric in the trait bounds of the types of the elements where the
+// binary operation is applied. We create a different macro for it
+macro_rules! std_ops_gen_nsym {
+    ($lty: ident, $groupelem: ident, $class: ident, $out: ident, $f: ident) => {
+        impl<'b, G: $groupelem> $class<&'b G::CorrespondingScalar> for $lty<G> {
+            type Output = $out<G>;
+
+            fn $f(self, other: &'b G::CorrespondingScalar) -> Self::Output {
+                (&self).$f(other)
+            }
+        }
+    };
+}
