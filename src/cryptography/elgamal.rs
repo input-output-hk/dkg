@@ -7,10 +7,10 @@
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Mul, Sub};
-
-use cryptoxide::blake2b::Blake2b;
-use cryptoxide::chacha20::ChaCha20;
-use cryptoxide::digest::Digest;
+use blake2::{Blake2b, Digest};
+use chacha20::ChaCha20;
+use chacha20::cipher::{NewCipher, StreamCipher};
+use generic_array::GenericArray;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 /// ElGamal public key. pk = sk * G, where sk is the `SecretKey` and G is the group
@@ -177,18 +177,19 @@ impl<G: PrimeGroupElement> SecretKey<G> {
 impl<G: PrimeGroupElement> SymmetricKey<G> {
     // Initialise encryption, by hashing the group element
     fn initialise_encryption(&self) -> ChaCha20 {
-        let mut out = [0u8; 44];
-        let mut h = Blake2b::new(44);
-        h.input(&self.group_repr.to_bytes());
-        h.result(&mut out);
-        ChaCha20::new(&out[0..32], &out[32..44])
+        let h = Blake2b::new()
+            .chain(&self.group_repr.to_bytes())
+            .finalize();
+        let key = GenericArray::from_slice(&h[0..32]);
+        let nonce = GenericArray::from_slice(&h[32..44]);
+        ChaCha20::new(&key, &nonce)
     }
 
     // Encrypt/decrypt a message using the symmetric key
     fn process(&self, m: &[u8]) -> Vec<u8> {
         let mut key = self.initialise_encryption();
         let mut dat = m.to_vec();
-        key.process_mut(&mut dat);
+        key.apply_keystream(&mut dat);
         dat
     }
 }
