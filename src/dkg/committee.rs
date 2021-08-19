@@ -252,9 +252,15 @@ mod tests {
         let threshold = 2;
         let nr_members = 3;
 
-        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, threshold, nr_members, &h, &mc, 0);
-        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, threshold, nr_members, &h, &mc, 1);
-        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, threshold, nr_members, &h, &mc, 2);
+        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(
+            &mut rng, threshold, nr_members, &h, &mc, 0,
+        );
+        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(
+            &mut rng, threshold, nr_members, &h, &mc, 1,
+        );
+        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(
+            &mut rng, threshold, nr_members, &h, &mc, 2,
+        );
 
         // Now, party one fetches invalid state of the other parties, mainly party two and three
         let fetched_state = vec![

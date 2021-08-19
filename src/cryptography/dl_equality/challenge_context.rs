@@ -29,7 +29,11 @@ impl ChallengeContext {
     /// Generation of the `first_challenge`. This challenge is generated after the `Announcement` is
     /// "sent". Hence, we include the latter to the challenge context and generate its
     /// corresponding scalar.
-    pub(crate) fn first_challenge<G: PrimeGroupElement>(&mut self, a1: &G, a2: &G) -> G::CorrespondingScalar {
+    pub(crate) fn first_challenge<G: PrimeGroupElement>(
+        &mut self,
+        a1: &G,
+        a2: &G,
+    ) -> G::CorrespondingScalar {
         self.0.update(&a1.to_bytes());
         self.0.update(&a2.to_bytes());
 

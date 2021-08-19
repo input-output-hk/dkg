@@ -8,33 +8,34 @@
 //!
 //! which is a proof of discrete log equality. We can therefore prove
 //! correct decryption using a proof of discrete log equality.
-use crate::cryptography::elgamal::SymmetricKey;
-use crate::cryptography::zkps::dl_equality::DleqZkp;
-use crate::cryptography::{HybridCiphertext, PublicKey, SecretKey};
-use crate::GroupElement;
-use rand::{CryptoRng, RngCore};
+use crate::cryptography::dl_equality::DleqZkp;
+use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey, SymmetricKey};
+use crate::traits::PrimeGroupElement;
+use rand_core::{CryptoRng, RngCore};
 
 /// Proof of correct decryption.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Zkp {
-    hybrid_dec_key_proof: DleqZkp,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Zkp<G: PrimeGroupElement> {
+    hybrid_dec_key_proof: DleqZkp<G>,
 }
 
-impl Zkp {
-    pub(crate) const PROOF_SIZE: usize = DleqZkp::BYTES_LEN;
+impl<G> Zkp<G>
+where
+    G: PrimeGroupElement,
+{
     /// Generate a decryption zero knowledge proof.
     pub fn generate<R>(
-        c: &HybridCiphertext,
-        pk: &PublicKey,
-        symmetric_key: &SymmetricKey,
-        sk: &SecretKey,
+        c: &HybridCiphertext<G>,
+        pk: &PublicKey<G>,
+        symmetric_key: &SymmetricKey<G>,
+        sk: &SecretKey<G>,
         rng: &mut R,
     ) -> Self
     where
         R: CryptoRng + RngCore,
     {
         let hybrid_dec_key_proof = DleqZkp::generate(
-            &GroupElement::generator(),
+            &G::generator(),
             &c.e1,
             &pk.pk,
             &symmetric_key.group_repr,
@@ -49,54 +50,27 @@ impl Zkp {
     /// Verify a decryption zero knowledge proof
     pub fn verify(
         &self,
-        c: &HybridCiphertext,
-        symmetric_key: &SymmetricKey,
-        pk: &PublicKey,
+        c: &HybridCiphertext<G>,
+        symmetric_key: &SymmetricKey<G>,
+        pk: &PublicKey<G>,
     ) -> bool {
-        self.hybrid_dec_key_proof.verify(
-            &GroupElement::generator(),
-            &c.e1,
-            &pk.pk,
-            &symmetric_key.group_repr,
-        )
-    }
-
-    pub fn to_bytes(&self) -> [u8; Self::PROOF_SIZE] {
-        let mut output = [0u8; Self::PROOF_SIZE];
-        self.write_to_bytes(&mut output);
-        output
-    }
-
-    pub fn write_to_bytes(&self, output: &mut [u8]) {
-        assert_eq!(output.len(), Self::PROOF_SIZE);
-        self.hybrid_dec_key_proof.write_to_bytes(output);
-    }
-
-    pub fn from_bytes(slice: &[u8]) -> Option<Self> {
-        if slice.len() != Self::PROOF_SIZE {
-            return None;
-        }
-        let hybrid_dec_key_proof = DleqZkp::from_bytes(slice)?;
-
-        let proof = Zkp {
-            hybrid_dec_key_proof,
-        };
-        Some(proof)
+        self.hybrid_dec_key_proof
+            .verify(&G::generator(), &c.e1, &pk.pk, &symmetric_key.group_repr)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cryptography::Keypair;
-    use rand_chacha::ChaCha20Rng;
-    use rand_core::SeedableRng;
+    use crate::cryptography::elgamal::Keypair;
+    use curve25519_dalek::ristretto::RistrettoPoint;
+    use rand_core::OsRng;
 
     #[test]
     pub fn it_works() {
-        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
+        let mut r = OsRng;
 
-        let keypair = Keypair::generate(&mut r);
+        let keypair = Keypair::<RistrettoPoint>::generate(&mut r);
 
         let plaintext = [10u8; 43];
         let ciphertext = keypair.public_key.hybrid_encrypt(&plaintext, &mut r);
@@ -111,35 +85,5 @@ mod tests {
             &mut r,
         );
         assert!(proof.verify(&ciphertext, &decryption_key, &keypair.public_key))
-    }
-
-    #[test]
-    pub fn serialisation() {
-        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
-
-        let keypair = Keypair::generate(&mut r);
-
-        let plaintext = [10u8; 43];
-        let ciphertext = keypair.public_key.hybrid_encrypt(&plaintext, &mut r);
-
-        let decryption_key = keypair.secret_key.recover_symmetric_key(&ciphertext);
-
-        let proof = Zkp::generate(
-            &ciphertext,
-            &keypair.public_key,
-            &decryption_key,
-            &keypair.secret_key,
-            &mut r,
-        );
-
-        let proof_serialised = proof.to_bytes();
-        let proof_deserialised = Zkp::from_bytes(&proof_serialised);
-        assert!(proof_deserialised.is_some());
-
-        assert!(proof_deserialised.unwrap().verify(
-            &ciphertext,
-            &decryption_key,
-            &keypair.public_key
-        ))
     }
 }

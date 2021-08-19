@@ -5,12 +5,12 @@
 //! stream cipher to produce a hybrid encryption scheme.
 
 use crate::traits::{PrimeGroupElement, Scalar};
+use blake2::{Blake2b, Digest};
+use chacha20::cipher::{NewCipher, StreamCipher};
+use chacha20::ChaCha20;
+use generic_array::GenericArray;
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Mul, Sub};
-use blake2::{Blake2b, Digest};
-use chacha20::ChaCha20;
-use chacha20::cipher::{NewCipher, StreamCipher};
-use generic_array::GenericArray;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 /// ElGamal public key. pk = sk * G, where sk is the `SecretKey` and G is the group
@@ -44,16 +44,16 @@ pub struct Ciphertext<G: PrimeGroupElement> {
 /// Hybrid Ciphertext
 pub struct HybridCiphertext<G: PrimeGroupElement> {
     // ElGamal Ciphertext
-    e1: G,
+    pub e1: G,
     // Symmetric encrypted message
-    e2: Box<[u8]>,
+    pub e2: Box<[u8]>,
 }
 
 /// The hybrid encryption scheme uses a group element as a
 /// representation of the symmetric key. This facilitates
 /// its exchange using ElGamal encryption.
 pub struct SymmetricKey<G: PrimeGroupElement> {
-    group_repr: G,
+    pub(crate) group_repr: G,
 }
 
 impl<G: PrimeGroupElement> PublicKey<G> {
@@ -177,9 +177,7 @@ impl<G: PrimeGroupElement> SecretKey<G> {
 impl<G: PrimeGroupElement> SymmetricKey<G> {
     // Initialise encryption, by hashing the group element
     fn initialise_encryption(&self) -> ChaCha20 {
-        let h = Blake2b::new()
-            .chain(&self.group_repr.to_bytes())
-            .finalize();
+        let h = Blake2b::new().chain(&self.group_repr.to_bytes()).finalize();
         let key = GenericArray::from_slice(&h[0..32]);
         let nonce = GenericArray::from_slice(&h[32..44]);
         ChaCha20::new(&key, &nonce)

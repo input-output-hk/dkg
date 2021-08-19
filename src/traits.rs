@@ -1,8 +1,8 @@
+use blake2::Blake2b;
 use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
-use blake2::Blake2b;
 
 pub trait Scalar:
     Copy
