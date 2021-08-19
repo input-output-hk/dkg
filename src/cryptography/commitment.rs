@@ -11,7 +11,7 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
     /// Generate a new random commitment key by hashin the input
     pub fn generate(bytes: &[u8]) -> Self {
         CommitmentKey::<G> {
-            h: G::from_hash(bytes),
+            h: G::hash_to_group(bytes),
         }
     }
     /// Return a commitment with the given opening, `o`

@@ -210,7 +210,7 @@ mod tests {
         let mut rng = OsRng;
 
         let mut shared_string = b"Example of a shared string.".to_owned();
-        let h = CommitmentKey::generate(&mut shared_string);
+        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
@@ -236,40 +236,39 @@ mod tests {
 
         assert!(phase_2.validate().is_ok());
     }
-    // #[test]
-    // fn invalid_phase_2() {
-    //     let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
-    //
-    //     let mut shared_string =
-    //         b"Example of a shared string. This should be VotePlan.to_id()".to_owned();
-    //     let h = Crs::from_hash(&mut shared_string);
-    //
-    //     let mc1 = MemberCommunicationKey::new(&mut rng);
-    //     let mc2 = MemberCommunicationKey::new(&mut rng);
-    //     let mc3 = MemberCommunicationKey::new(&mut rng);
-    //     let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
-    //
-    //     let threshold = 2;
-    //     let nr_members = 3;
-    //
-    //     let m1 = DistributedKeyGeneration::init(&mut rng, threshold, nr_members, &h, &mc, 0);
-    //     let m2 = DistributedKeyGeneration::init(&mut rng, threshold, nr_members, &h, &mc, 1);
-    //     let m3 = DistributedKeyGeneration::init(&mut rng, threshold, nr_members, &h, &mc, 2);
-    //
-    //     // Now, party one fetches invalid state of the other parties, mainly party two and three
-    //     let fetched_state = vec![
-    //         MembersFetchedState1 {
-    //             indexed_shares: m2.encrypted_shares[0].clone(),
-    //             committed_coeffs: vec![GroupElement::zero(); 3],
-    //         },
-    //         MembersFetchedState1 {
-    //             indexed_shares: m3.encrypted_shares[0].clone(),
-    //             committed_coeffs: vec![GroupElement::zero(); 3],
-    //         },
-    //     ];
-    //
-    //     let phase_2_faked = m1.to_phase_2(&mc1, &fetched_state);
-    //     // todo: we probably want to check for a particular error here
-    //     assert!(phase_2_faked.validate().is_err());
-    // }
+
+    #[test]
+    fn invalid_phase_2() {
+        let mut rng = OsRng;
+
+        let mut shared_string = b"Example of a shared string.".to_owned();
+        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
+
+        let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+
+        let threshold = 2;
+        let nr_members = 3;
+
+        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, threshold, nr_members, &h, &mc, 0);
+        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, threshold, nr_members, &h, &mc, 1);
+        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, threshold, nr_members, &h, &mc, 2);
+
+        // Now, party one fetches invalid state of the other parties, mainly party two and three
+        let fetched_state = vec![
+            MembersFetchedState1 {
+                indexed_shares: m2.encrypted_shares[0].clone(),
+                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+            },
+            MembersFetchedState1 {
+                indexed_shares: m3.encrypted_shares[0].clone(),
+                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+            },
+        ];
+
+        let phase_2_faked = m1.to_phase_2(&mc1, &fetched_state);
+        assert!(phase_2_faked.validate().is_err());
+    }
 }

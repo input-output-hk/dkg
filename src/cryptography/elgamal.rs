@@ -345,7 +345,7 @@ mod tests {
             RistrettoPoint::identity()
         }
 
-        fn from_hash(input: &[u8]) -> Self {
+        fn hash_to_group(input: &[u8]) -> Self {
             RistrettoPoint::hash_from_bytes::<Blake2b>(input)
         }
 

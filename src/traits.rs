@@ -101,7 +101,7 @@ pub trait PrimeGroupElement:
 
     fn zero() -> Self;
 
-    fn from_hash(input: &[u8]) -> Self;
+    fn hash_to_group(input: &[u8]) -> Self;
 
     fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
 
