@@ -2,6 +2,7 @@ use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use blake2::Blake2b;
 
 pub trait Scalar:
     Copy
@@ -18,7 +19,7 @@ pub trait Scalar:
     + AddAssign<Self>
     + for<'a> Add<&'a Self, Output = Self>
     + for<'a> Sub<&'a Self, Output = Self>
-    + Mul<Self, Output = Self>
+    + for<'a> Mul<&'a Self, Output = Self>
     + core::iter::Sum<Self>
     + for<'a> core::iter::Sum<&'a Self>
 {
@@ -26,6 +27,8 @@ pub trait Scalar:
     type EncodingSize: ArrayLength<u8>;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
+
+    fn hash_to_scalar(input: Blake2b) -> Self;
 
     fn from_u64(scalar: u64) -> Self;
 

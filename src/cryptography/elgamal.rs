@@ -331,6 +331,10 @@ mod tests {
         fn one() -> Self {
             RScalar::one()
         }
+
+        fn hash_to_scalar(input: Blake2b) -> Self {
+            RScalar::from_hash::<Blake2b>(input)
+        }
     }
 
     impl PrimeGroupElement for RistrettoPoint {
