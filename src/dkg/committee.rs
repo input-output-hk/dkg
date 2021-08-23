@@ -36,7 +36,7 @@ pub struct MemberState1<G: PrimeGroupElement> {
 }
 
 /// State of the member corresponding to round 2.
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MemberState2<G: PrimeGroupElement> {
     threshold: usize,
     misbehaving_parties: Vec<MisbehavingPartiesState1<G>>,
@@ -51,8 +51,7 @@ pub(crate) type IndexedEncryptedShares<G> = (usize, HybridCiphertext<G>, HybridC
 /// and a proof of correctness of the misbehaviour claim.
 type MisbehavingPartiesState1<G> = (usize, DkgError, ProofOfMisbehaviour<G>);
 
-// todo: third element should be a proof of misbehaviour.
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct ProofOfMisbehaviour<G: PrimeGroupElement> {
     symm_key_1: SymmetricKey<G>,
     symm_key_2: SymmetricKey<G>,
@@ -101,8 +100,8 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
     pub fn verify(
         &self,
         complaining_pk: &MemberCommunicationPublicKey<G>,
-        fetched_data: MembersFetchedState1<G>,
-        commitment_key: CommitmentKey<G>,
+        fetched_data: &MembersFetchedState1<G>,
+        commitment_key: &CommitmentKey<G>,
         plaintiff_index: usize,
         threshold: usize,
     ) -> Result<(), DkgError> {
@@ -146,7 +145,7 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
 
         let check_element = commitment_key.h * plaintext_1 + G::generator() * plaintext_2;
         let multi_scalar =
-            G::vartime_multiscalar_multiplication(index_pow, fetched_data.committed_coeffs);
+            G::vartime_multiscalar_multiplication(index_pow, fetched_data.clone().committed_coeffs);
 
         if check_element != multi_scalar {
             return Err(DkgError::InvalidProofOfMisbehaviour);
@@ -391,7 +390,65 @@ mod tests {
             },
         ];
 
+        // Given that there is a number of misbehaving parties higher than the threshold, proceeding
+        // to step 2 should fail.
         let phase_2_faked = m1.to_phase_2(&mc1, &fetched_state, &mut rng);
-        assert!(phase_2_faked.validate().is_err());
+        assert_eq!(phase_2_faked.validate(), Err(DkgError::MisbehaviourHigherThreshold));
+    }
+
+    #[test]
+    fn misbehaving_parties() {
+        let mut rng = OsRng;
+
+        let mut shared_string = b"Example of a shared string.".to_owned();
+        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
+
+        let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+
+        let threshold = 2;
+        let nr_members = 3;
+
+        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(
+            &mut rng, threshold, nr_members, &h, &mc, 0,
+        );
+        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(
+            &mut rng, threshold, nr_members, &h, &mc, 1,
+        );
+        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(
+            &mut rng, threshold, nr_members, &h, &mc, 2,
+        );
+
+        // Now, party one fetches invalid state of a single party, mainly party two
+        let fetched_state = vec![
+            MembersFetchedState1 {
+                indexed_shares: m2.encrypted_shares[0].clone(),
+                committed_coeffs: m2.coeff_comms.clone(),
+            },
+            MembersFetchedState1 {
+                indexed_shares: m3.encrypted_shares[0].clone(),
+                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+            },
+        ];
+
+        // Given that party 3 submitted encrypted shares which do not correspond to the
+        // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
+        // party 1, and there should be logs of misbehaviour of party 3
+
+        let validated_phase_2 = m1.to_phase_2(&mc1, &fetched_state, &mut rng).validate();
+        assert!(validated_phase_2.is_ok());
+
+        let misbehaving_parties = validated_phase_2.unwrap().misbehaving_parties;
+        // Party 2 should be good
+        assert_eq!(misbehaving_parties.len(), 1);
+
+        // Party 3 should fail
+        // todo: mishandling of indices
+        // assert_eq!(misbehaving_parties[0].0, 2);
+        assert_eq!(misbehaving_parties[0].1, DkgError::ShareValidityFailed);
+        // and the complaint should be valid
+        assert!(misbehaving_parties[0].2.verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2).is_err());
     }
 }

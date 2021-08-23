@@ -2,7 +2,7 @@ use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 /// Pedersen Commitment key
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CommitmentKey<G: PrimeGroupElement> {
     pub h: G,
 }
@@ -56,7 +56,7 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Open<G: PrimeGroupElement> {
     pub m: G::CorrespondingScalar,
     pub r: G::CorrespondingScalar,

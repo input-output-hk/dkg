@@ -5,7 +5,7 @@ use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 /// Committee member secret key share.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemberSecretShare<G: PrimeGroupElement>(pub(crate) SecretKey<G>);
 
 /// Committee member public key share.
@@ -14,7 +14,7 @@ pub struct MemberPublicShare<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 
 /// Committee member communication private key. This differs from the secret share, as the members
 /// need a pre-existing keypair to communicate with other members.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>);
 
 /// Committee Member communication public key. This differs from the public share, as the members
