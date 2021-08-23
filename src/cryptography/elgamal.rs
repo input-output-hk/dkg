@@ -52,6 +52,7 @@ pub struct HybridCiphertext<G: PrimeGroupElement> {
 /// The hybrid encryption scheme uses a group element as a
 /// representation of the symmetric key. This facilitates
 /// its exchange using ElGamal encryption.
+#[derive(Clone)]
 pub struct SymmetricKey<G: PrimeGroupElement> {
     pub(crate) group_repr: G,
 }

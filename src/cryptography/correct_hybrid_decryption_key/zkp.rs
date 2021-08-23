@@ -9,7 +9,8 @@
 //! which is a proof of discrete log equality. We can therefore prove
 //! correct decryption using a proof of discrete log equality.
 use crate::cryptography::dl_equality::DleqZkp;
-use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey, SymmetricKey};
+use crate::cryptography::elgamal::{HybridCiphertext, SymmetricKey};
+use crate::dkg::procedure_keys::{MemberCommunicationPublicKey, MemberCommunicationKey};
 use crate::traits::PrimeGroupElement;
 use rand_core::{CryptoRng, RngCore};
 
@@ -26,9 +27,9 @@ where
     /// Generate a decryption zero knowledge proof.
     pub fn generate<R>(
         c: &HybridCiphertext<G>,
-        pk: &PublicKey<G>,
+        pk: &MemberCommunicationPublicKey<G>,
         symmetric_key: &SymmetricKey<G>,
-        sk: &SecretKey<G>,
+        sk: &MemberCommunicationKey<G>,
         rng: &mut R,
     ) -> Self
     where
@@ -37,9 +38,9 @@ where
         let hybrid_dec_key_proof = DleqZkp::generate(
             &G::generator(),
             &c.e1,
-            &pk.pk,
+            &pk.0.pk,
             &symmetric_key.group_repr,
-            &sk.sk,
+            &sk.0.sk,
             rng,
         );
         Zkp {
@@ -52,17 +53,16 @@ where
         &self,
         c: &HybridCiphertext<G>,
         symmetric_key: &SymmetricKey<G>,
-        pk: &PublicKey<G>,
+        pk: &MemberCommunicationPublicKey<G>,
     ) -> bool {
         self.hybrid_dec_key_proof
-            .verify(&G::generator(), &c.e1, &pk.pk, &symmetric_key.group_repr)
+            .verify(&G::generator(), &c.e1, &pk.0.pk, &symmetric_key.group_repr)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cryptography::elgamal::Keypair;
     use curve25519_dalek::ristretto::RistrettoPoint;
     use rand_core::OsRng;
 
@@ -70,20 +70,21 @@ mod tests {
     pub fn it_works() {
         let mut r = OsRng;
 
-        let keypair = Keypair::<RistrettoPoint>::generate(&mut r);
+        let comm_key = MemberCommunicationKey::<RistrettoPoint>::new(&mut r);
+        let comm_pkey = comm_key.to_public();
 
         let plaintext = [10u8; 43];
-        let ciphertext = keypair.public_key.hybrid_encrypt(&plaintext, &mut r);
+        let ciphertext = comm_pkey.hybrid_encrypt(&plaintext, &mut r);
 
-        let decryption_key = keypair.secret_key.recover_symmetric_key(&ciphertext);
+        let decryption_key = comm_key.0.recover_symmetric_key(&ciphertext);
 
         let proof = Zkp::generate(
             &ciphertext,
-            &keypair.public_key,
+            &comm_pkey,
             &decryption_key,
-            &keypair.secret_key,
+            &comm_key,
             &mut r,
         );
-        assert!(proof.verify(&ciphertext, &decryption_key, &keypair.public_key))
+        assert!(proof.verify(&ciphertext, &decryption_key, &comm_pkey))
     }
 }

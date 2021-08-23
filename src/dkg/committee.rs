@@ -13,10 +13,12 @@ use super::procedure_keys::{
 use crate::cryptography::{
     commitment::CommitmentKey,
     elgamal::{HybridCiphertext, PublicKey, SecretKey},
+    correct_hybrid_decryption_key::CorrectHybridDecrKeyZkp,
 };
 use crate::polynomial::Polynomial;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
+use crate::cryptography::elgamal::SymmetricKey;
 
 pub type DistributedKeyGeneration<G> = MemberState1<G>;
 
@@ -35,20 +37,46 @@ pub struct MemberState1<G: PrimeGroupElement> {
 
 /// State of the member corresponding to round 2.
 #[derive(Clone)]
-pub struct MemberState2 {
+pub struct MemberState2<G: PrimeGroupElement> {
     threshold: usize,
-    misbehaving_parties: Vec<MisbehavingPartiesState1>,
+    misbehaving_parties: Vec<MisbehavingPartiesState1<G>>,
 }
 
 /// Type that contains the index of the receiver, and its two encrypted
 /// shares.
 pub(crate) type IndexedEncryptedShares<G> = (usize, HybridCiphertext<G>, HybridCiphertext<G>);
 
-// todo: third element should be a proof of misbehaviour.
 /// Type that contains misbehaving parties detected in round 1. These
 /// consist of the misbehaving member's index, the error which failed,
 /// and a proof of correctness of the misbehaviour claim.
-type MisbehavingPartiesState1 = (usize, DkgError, usize);
+type MisbehavingPartiesState1<G> = (usize, DkgError, ProofOfMisbehaviour<G>);
+
+// todo: third element should be a proof of misbehaviour.
+#[derive(Clone)]
+struct ProofOfMisbehaviour<G: PrimeGroupElement> {
+    symm_key_1: SymmetricKey<G>,
+    symm_key_2: SymmetricKey<G>,
+    encrypted_shares: IndexedEncryptedShares<G>,
+    proof_decryption_1: CorrectHybridDecrKeyZkp<G>,
+    proof_decryption_2: CorrectHybridDecrKeyZkp<G>
+}
+
+impl <G: PrimeGroupElement> ProofOfMisbehaviour<G> {
+    fn generate<R>(encrypted_shares: &IndexedEncryptedShares<G>,
+                secret_key: &MemberCommunicationKey<G>,
+                rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore
+    {
+        let symm_key_1 = secret_key.0.recover_symmetric_key(&encrypted_shares.1);
+        let symm_key_2 = secret_key.0.recover_symmetric_key(&encrypted_shares.2);
+
+        let proof_decryption_1 = CorrectHybridDecrKeyZkp::generate(&encrypted_shares.1, &secret_key.to_public(), &symm_key_1, secret_key, rng);
+        let proof_decryption_2 = CorrectHybridDecrKeyZkp::generate(&encrypted_shares.2, &secret_key.to_public(), &symm_key_2, secret_key, rng);
+
+        Self {symm_key_1, symm_key_2, encrypted_shares: encrypted_shares.clone(), proof_decryption_1, proof_decryption_2}
+    }
+}
 
 /// State of the members after round 1. This structure contains the indexed encrypted
 /// shares of every other participant, `indexed_shares`, and the committed coefficients
@@ -134,12 +162,16 @@ impl<G: PrimeGroupElement> MemberState1<G> {
 
     /// Function to proceed to phase 2. It checks and keeps track of misbehaving parties. If this
     /// step does not validate, the member is not allowed to proceed to phase 3.
-    pub fn to_phase_2(
+    pub fn to_phase_2<R>(
         &self,
         secret_key: &MemberCommunicationKey<G>,
         members_state: &[MembersFetchedState1<G>],
-    ) -> MemberState2 {
-        let mut misbehaving_parties: Vec<MisbehavingPartiesState1> = Vec::new();
+        rng: &mut R
+    ) -> MemberState2<G>
+    where
+        R: CryptoRng + RngCore
+    {
+        let mut misbehaving_parties: Vec<MisbehavingPartiesState1<G>> = Vec::new();
         for fetched_data in members_state {
             if let (Some(comm), Some(shek)) =
                 secret_key.decrypt_shares(fetched_data.indexed_shares.clone())
@@ -156,19 +188,21 @@ impl<G: PrimeGroupElement> MemberState1<G> {
                 );
 
                 if check_element != multi_scalar {
+                    let proof = ProofOfMisbehaviour::generate(&fetched_data.indexed_shares, secret_key, rng);
                     // todo: should we instead store the sender's index?
                     misbehaving_parties.push((
                         fetched_data.get_index(),
                         DkgError::ShareValidityFailed,
-                        0,
+                        proof,
                     ));
                 }
             } else {
                 // todo: handle the proofs. Might not be the most optimal way of handling these two
+                let proof = ProofOfMisbehaviour::generate(&fetched_data.indexed_shares, secret_key, rng);
                 misbehaving_parties.push((
                     fetched_data.get_index(),
                     DkgError::ScalarOutOfBounds,
-                    0,
+                    proof,
                 ));
             }
         }
@@ -188,7 +222,7 @@ impl<G: PrimeGroupElement> MemberState1<G> {
     }
 }
 
-impl MemberState2 {
+impl<G: PrimeGroupElement> MemberState2<G> {
     pub fn validate(&self) -> Result<Self, DkgError> {
         if self.misbehaving_parties.len() == self.threshold {
             return Err(DkgError::MisbehaviourHigherThreshold);
@@ -232,7 +266,7 @@ mod tests {
             committed_coeffs: m2.coeff_comms.clone(),
         }];
 
-        let phase_2 = m1.to_phase_2(&mc1, &fetched_state);
+        let phase_2 = m1.to_phase_2(&mc1, &fetched_state, &mut rng);
 
         assert!(phase_2.validate().is_ok());
     }
@@ -274,7 +308,7 @@ mod tests {
             },
         ];
 
-        let phase_2_faked = m1.to_phase_2(&mc1, &fetched_state);
+        let phase_2_faked = m1.to_phase_2(&mc1, &fetched_state, &mut rng);
         assert!(phase_2_faked.validate().is_err());
     }
 }

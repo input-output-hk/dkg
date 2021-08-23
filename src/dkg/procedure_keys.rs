@@ -15,12 +15,12 @@ pub struct MemberPublicShare<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 /// Committee member communication private key. This differs from the secret share, as the members
 /// need a pre-existing keypair to communicate with other members.
 #[derive(Clone)]
-pub struct MemberCommunicationKey<G: PrimeGroupElement>(SecretKey<G>);
+pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>);
 
 /// Committee Member communication public key. This differs from the public share, as the members
 /// need a pre-existing keypair to communicate with other members.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(PublicKey<G>);
+pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 
 /// The overall committee public key used for everyone to encrypt their vote to.
 #[derive(Debug, Clone, Eq, PartialEq)]
