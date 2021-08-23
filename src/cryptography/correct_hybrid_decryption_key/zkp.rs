@@ -10,7 +10,8 @@
 //! correct decryption using a proof of discrete log equality.
 use crate::cryptography::dl_equality::DleqZkp;
 use crate::cryptography::elgamal::{HybridCiphertext, SymmetricKey};
-use crate::dkg::procedure_keys::{MemberCommunicationPublicKey, MemberCommunicationKey};
+use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
+use crate::errors::ProofError;
 use crate::traits::PrimeGroupElement;
 use rand_core::{CryptoRng, RngCore};
 
@@ -54,9 +55,13 @@ where
         c: &HybridCiphertext<G>,
         symmetric_key: &SymmetricKey<G>,
         pk: &MemberCommunicationPublicKey<G>,
-    ) -> bool {
-        self.hybrid_dec_key_proof
-            .verify(&G::generator(), &c.e1, &pk.0.pk, &symmetric_key.group_repr)
+    ) -> Result<(), ProofError> {
+        self.hybrid_dec_key_proof.verify(
+            &G::generator(),
+            &c.e1,
+            &pk.0.pk,
+            &symmetric_key.group_repr,
+        )
     }
 }
 
@@ -78,13 +83,9 @@ mod tests {
 
         let decryption_key = comm_key.0.recover_symmetric_key(&ciphertext);
 
-        let proof = Zkp::generate(
-            &ciphertext,
-            &comm_pkey,
-            &decryption_key,
-            &comm_key,
-            &mut r,
-        );
-        assert!(proof.verify(&ciphertext, &decryption_key, &comm_pkey))
+        let proof = Zkp::generate(&ciphertext, &comm_pkey, &decryption_key, &comm_key, &mut r);
+        assert!(proof
+            .verify(&ciphertext, &decryption_key, &comm_pkey)
+            .is_ok())
     }
 }

@@ -6,19 +6,19 @@
 //! [spec](https://github.com/input-output-hk/treasury-crypto/blob/master/docs/voting_protocol_spec/Treasury_voting_protocol_spec.pdf),
 //! written by Dmytro Kaidalov.
 
-use super::errors::DkgError;
 use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
+use crate::cryptography::elgamal::SymmetricKey;
 use crate::cryptography::{
     commitment::CommitmentKey,
-    elgamal::{HybridCiphertext, PublicKey, SecretKey},
     correct_hybrid_decryption_key::CorrectHybridDecrKeyZkp,
+    elgamal::{HybridCiphertext, PublicKey, SecretKey},
 };
+use crate::errors::DkgError;
 use crate::polynomial::Polynomial;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
-use crate::cryptography::elgamal::SymmetricKey;
 
 pub type DistributedKeyGeneration<G> = MemberState1<G>;
 
@@ -58,24 +58,50 @@ struct ProofOfMisbehaviour<G: PrimeGroupElement> {
     symm_key_2: SymmetricKey<G>,
     encrypted_shares: IndexedEncryptedShares<G>,
     proof_decryption_1: CorrectHybridDecrKeyZkp<G>,
-    proof_decryption_2: CorrectHybridDecrKeyZkp<G>
+    proof_decryption_2: CorrectHybridDecrKeyZkp<G>,
 }
 
-impl <G: PrimeGroupElement> ProofOfMisbehaviour<G> {
-    fn generate<R>(encrypted_shares: &IndexedEncryptedShares<G>,
-                secret_key: &MemberCommunicationKey<G>,
-                rng: &mut R) -> Self
+impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
+    fn generate<R>(
+        encrypted_shares: &IndexedEncryptedShares<G>,
+        secret_key: &MemberCommunicationKey<G>,
+        rng: &mut R,
+    ) -> Self
     where
-        R: CryptoRng + RngCore
+        R: CryptoRng + RngCore,
     {
         let symm_key_1 = secret_key.0.recover_symmetric_key(&encrypted_shares.1);
         let symm_key_2 = secret_key.0.recover_symmetric_key(&encrypted_shares.2);
 
-        let proof_decryption_1 = CorrectHybridDecrKeyZkp::generate(&encrypted_shares.1, &secret_key.to_public(), &symm_key_1, secret_key, rng);
-        let proof_decryption_2 = CorrectHybridDecrKeyZkp::generate(&encrypted_shares.2, &secret_key.to_public(), &symm_key_2, secret_key, rng);
+        let proof_decryption_1 = CorrectHybridDecrKeyZkp::generate(
+            &encrypted_shares.1,
+            &secret_key.to_public(),
+            &symm_key_1,
+            secret_key,
+            rng,
+        );
+        let proof_decryption_2 = CorrectHybridDecrKeyZkp::generate(
+            &encrypted_shares.2,
+            &secret_key.to_public(),
+            &symm_key_2,
+            secret_key,
+            rng,
+        );
 
-        Self {symm_key_1, symm_key_2, encrypted_shares: encrypted_shares.clone(), proof_decryption_1, proof_decryption_2}
+        Self {
+            symm_key_1,
+            symm_key_2,
+            encrypted_shares: encrypted_shares.clone(),
+            proof_decryption_1,
+            proof_decryption_2,
+        }
     }
+    //
+    // // todo: we probably want to make the verifier input the Hybrid ctxt.
+    // fn verify(&self, complaining_pk: &MemberCommunicationPublicKey<G>) -> Result<(), DkgError> {
+    //     let check_1 = self.proof_decryption_1.verify(&self.encrypted_shares.1, &self.symm_key_1, complaining_pk);
+    //     Ok(())
+    // }
 }
 
 /// State of the members after round 1. This structure contains the indexed encrypted
@@ -166,10 +192,10 @@ impl<G: PrimeGroupElement> MemberState1<G> {
         &self,
         secret_key: &MemberCommunicationKey<G>,
         members_state: &[MembersFetchedState1<G>],
-        rng: &mut R
+        rng: &mut R,
     ) -> MemberState2<G>
     where
-        R: CryptoRng + RngCore
+        R: CryptoRng + RngCore,
     {
         let mut misbehaving_parties: Vec<MisbehavingPartiesState1<G>> = Vec::new();
         for fetched_data in members_state {
@@ -188,7 +214,11 @@ impl<G: PrimeGroupElement> MemberState1<G> {
                 );
 
                 if check_element != multi_scalar {
-                    let proof = ProofOfMisbehaviour::generate(&fetched_data.indexed_shares, secret_key, rng);
+                    let proof = ProofOfMisbehaviour::generate(
+                        &fetched_data.indexed_shares,
+                        secret_key,
+                        rng,
+                    );
                     // todo: should we instead store the sender's index?
                     misbehaving_parties.push((
                         fetched_data.get_index(),
@@ -198,7 +228,8 @@ impl<G: PrimeGroupElement> MemberState1<G> {
                 }
             } else {
                 // todo: handle the proofs. Might not be the most optimal way of handling these two
-                let proof = ProofOfMisbehaviour::generate(&fetched_data.indexed_shares, secret_key, rng);
+                let proof =
+                    ProofOfMisbehaviour::generate(&fetched_data.indexed_shares, secret_key, rng);
                 misbehaving_parties.push((
                     fetched_data.get_index(),
                     DkgError::ScalarOutOfBounds,

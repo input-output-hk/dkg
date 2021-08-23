@@ -10,6 +10,7 @@
 //! is the discrete logarithm, `dlog`.
 #![allow(clippy::many_single_char_names)]
 use super::challenge_context::ChallengeContext;
+use crate::errors::ProofError;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
@@ -50,7 +51,13 @@ impl<G: PrimeGroupElement> Zkp<G> {
     }
 
     /// Verify a DLEQ proof
-    pub fn verify(&self, base_1: &G, base_2: &G, point_1: &G, point_2: &G) -> bool {
+    pub fn verify(
+        &self,
+        base_1: &G,
+        base_2: &G,
+        point_1: &G,
+        point_2: &G,
+    ) -> Result<(), ProofError> {
         let r1 = *base_1 * self.response;
         let r2 = *base_2 * self.response;
         let announcement_1 = r1 - (*point_1 * self.challenge);
@@ -59,7 +66,11 @@ impl<G: PrimeGroupElement> Zkp<G> {
         let mut challenge_context = ChallengeContext::new(base_1, base_2, point_1, point_2);
         let challenge = challenge_context.first_challenge(&announcement_1, &announcement_2);
         // no need for constant time equality because of the hash in challenge()
-        challenge == self.challenge
+        if challenge == self.challenge {
+            Ok(())
+        } else {
+            Err(ProofError::ZkpVerificationFailed)
+        }
     }
 }
 
@@ -83,10 +94,12 @@ mod tests {
         let proof =
             Zkp::<RistrettoPoint>::generate(&base_1, &base_2, &point_1, &point_2, &dlog, &mut r);
 
-        assert!(proof.verify(&base_1, &base_2, &point_1, &point_2));
+        assert!(proof.verify(&base_1, &base_2, &point_1, &point_2).is_ok());
 
         let base_faked = RistrettoPoint::hash_to_group(&[13u8]);
 
-        assert!(!proof.verify(&base_1, &base_faked, &point_1, &point_2));
+        assert!(proof
+            .verify(&base_1, &base_faked, &point_1, &point_2)
+            .is_err());
     }
 }

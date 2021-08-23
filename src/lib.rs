@@ -5,5 +5,6 @@
 mod macros;
 pub mod cryptography;
 pub mod dkg;
+mod errors;
 mod polynomial;
 mod traits;
