@@ -96,12 +96,64 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
             proof_decryption_2,
         }
     }
-    //
-    // // todo: we probably want to make the verifier input the Hybrid ctxt.
-    // fn verify(&self, complaining_pk: &MemberCommunicationPublicKey<G>) -> Result<(), DkgError> {
-    //     let check_1 = self.proof_decryption_1.verify(&self.encrypted_shares.1, &self.symm_key_1, complaining_pk);
-    //     Ok(())
-    // }
+
+    // todo: we probably want to make the verifier input the Hybrid ctxt.
+    pub fn verify(
+        &self,
+        complaining_pk: &MemberCommunicationPublicKey<G>,
+        fetched_data: MembersFetchedState1<G>,
+        commitment_key: CommitmentKey<G>,
+        plaintiff_index: usize,
+        threshold: usize,
+    ) -> Result<(), DkgError> {
+        if self
+            .proof_decryption_1
+            .verify(
+                &fetched_data.indexed_shares.1,
+                &self.symm_key_1,
+                complaining_pk,
+            )
+            .is_err()
+            || self
+                .proof_decryption_2
+                .verify(
+                    &fetched_data.indexed_shares.2,
+                    &self.symm_key_2,
+                    complaining_pk,
+                )
+                .is_err()
+        {
+            return Err(DkgError::InvalidProofOfMisbehaviour);
+        }
+
+        let plaintext_1 = match <G::CorrespondingScalar as Scalar>::from_bytes(
+            &self.symm_key_1.process(&self.encrypted_shares.1.e2),
+        ) {
+            Some(scalar) => scalar,
+            None => return Err(DkgError::DecodingToScalarFailed),
+        };
+
+        let plaintext_2 = match <G::CorrespondingScalar as Scalar>::from_bytes(
+            &self.symm_key_2.process(&self.encrypted_shares.2.e2),
+        ) {
+            Some(scalar) => scalar,
+            None => return Err(DkgError::DecodingToScalarFailed),
+        };
+
+        let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(plaintiff_index as u64)
+            .exp_iter()
+            .take(threshold + 1);
+
+        let check_element = commitment_key.h * plaintext_1 + G::generator() * plaintext_2;
+        let multi_scalar =
+            G::vartime_multiscalar_multiplication(index_pow, fetched_data.committed_coeffs);
+
+        if check_element != multi_scalar {
+            return Err(DkgError::InvalidProofOfMisbehaviour);
+        }
+
+        Ok(())
+    }
 }
 
 /// State of the members after round 1. This structure contains the indexed encrypted

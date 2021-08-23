@@ -25,4 +25,17 @@ pub enum DkgError {
     /// This error occurs when an invalid proof of misbehaviour is detected
     #[cfg_attr(feature = "std", error("Invalid proof of misbehaviour."))]
     InvalidProofOfMisbehaviour,
+    /// This error occurs when a ZKP verification failed
+    #[cfg_attr(deature = "std", error("ZKP verification failed"))]
+    ZkpVerificationFailed,
+    /// This error occurs when parsing a byte string which should represent a
+    /// scalar, fails
+    #[cfg_attr(feature = "std", error("Decoding bytes to Scalar failed."))]
+    DecodingToScalarFailed,
+}
+
+impl From<ProofError> for DkgError {
+    fn from(_: ProofError) -> Self {
+        DkgError::ZkpVerificationFailed
+    }
 }
