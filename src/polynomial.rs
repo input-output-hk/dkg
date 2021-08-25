@@ -84,6 +84,13 @@ impl<S: Scalar> AsRef<[S]> for Polynomial<S> {
     }
 }
 
+impl<S: Scalar> AsMut<[S]> for Polynomial<S> {
+    fn as_mut(&mut self) -> &mut [S] {
+        &mut self.elements
+    }
+}
+
+
 impl<S: Scalar> std::ops::Add<Polynomial<S>> for Polynomial<S> {
     type Output = Polynomial<S>;
 
