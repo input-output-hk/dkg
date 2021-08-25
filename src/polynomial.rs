@@ -116,7 +116,7 @@ impl<S: Scalar> std::ops::Mul<Polynomial<S>> for Polynomial<S> {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn mul(self, rhs: Polynomial<S>) -> Self::Output {
         //println!("muling {} * {}", self, rhs);
-        let mut result = Self::new(self.degree() + rhs.degree() + 1);
+        let mut result = Self::new(self.degree() + rhs.degree());
         for (left_degree, &left_coeff) in self.elements.iter().enumerate() {
             for (right_degree, &right_coeff) in rhs.elements.iter().enumerate() {
                 let degree = left_degree + right_degree;
