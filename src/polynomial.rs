@@ -29,7 +29,7 @@ impl<S: Scalar> Polynomial<S> {
     /// Generate a new 0 polynomial of specific degree
     pub fn new(degree: usize) -> Self {
         Self {
-            elements: (0..degree+1).map(|_| S::zero()).collect(),
+            elements: std::iter::repeat(S::zero()).take(degree+1).collect(),
         }
     }
 
@@ -55,8 +55,7 @@ impl<S: Scalar> Polynomial<S> {
 
     /// generate a new polynomial of specific degree
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R, degree: usize) -> Polynomial<S> {
-
-        Polynomial { elements: (0..degree + 1).map(|_| S::random(rng)).collect() }
+        Polynomial { elements: std::iter::repeat_with(|| S::random(rng)).take(degree+1).collect() }
     }
 
     /// get the value of a polynomial a0 + a1 * x^1 + a2 * x^2 + .. + an * x^n for a value x=at
