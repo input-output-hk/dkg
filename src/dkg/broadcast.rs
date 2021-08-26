@@ -92,39 +92,37 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         plaintiff_index: usize,
         threshold: usize,
     ) -> Result<(), DkgError> {
-        if self
+        let proof1_is_err = self
             .proof_decryption_1
             .verify(
                 &fetched_data.indexed_shares.1,
                 &self.symm_key_1,
                 complaining_pk,
             )
-            .is_err()
-            || self
-                .proof_decryption_2
-                .verify(
-                    &fetched_data.indexed_shares.2,
-                    &self.symm_key_2,
-                    complaining_pk,
-                )
-                .is_err()
-        {
+            .is_err();
+
+        let proof2_is_err = self
+            .proof_decryption_2
+            .verify(
+                &fetched_data.indexed_shares.2,
+                &self.symm_key_2,
+                complaining_pk,
+            )
+            .is_err();
+
+        if proof1_is_err || proof2_is_err {
             return Err(DkgError::InvalidProofOfMisbehaviour);
         }
 
-        let plaintext_1 = match <G::CorrespondingScalar as Scalar>::from_bytes(
+        let plaintext_1 = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.symm_key_1.process(&self.encrypted_shares.1.e2),
-        ) {
-            Some(scalar) => scalar,
-            None => return Err(DkgError::DecodingToScalarFailed),
-        };
+        )
+            .ok_or(DkgError::DecodingToScalarFailed)?;
 
-        let plaintext_2 = match <G::CorrespondingScalar as Scalar>::from_bytes(
+        let plaintext_2 = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.symm_key_2.process(&self.encrypted_shares.2.e2),
-        ) {
-            Some(scalar) => scalar,
-            None => return Err(DkgError::DecodingToScalarFailed),
-        };
+        )
+            .ok_or(DkgError::DecodingToScalarFailed)?;
 
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(plaintiff_index as u64)
             .exp_iter()
