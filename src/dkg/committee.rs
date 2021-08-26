@@ -60,25 +60,11 @@ impl<G: PrimeGroupElement> Environment<G> {
     }
 }
 
-trait Init {}
 pub struct Initialise {}
-impl Init for Initialise {}
-
-trait Phase1 {}
 pub struct Round1 {}
-impl Phase1 for Round1 {}
-
-trait Phase2 {}
 pub struct Round2 {}
-impl Phase2 for Round2 {}
-
-trait Phase3 {}
 pub struct Round3 {}
-impl Phase3 for Round3 {}
-
-trait Phase4 {}
 pub struct Round4 {}
-impl Phase4 for Round4 {}
 
 pub type DistributedKeyGeneration<G> = Phase<G, Initialise>;
 impl<G: PrimeGroupElement> Phase<G, Initialise> {
