@@ -29,7 +29,7 @@ impl<S: Scalar> Polynomial<S> {
     /// Generate a new 0 polynomial of specific degree
     pub fn new(degree: usize) -> Self {
         Self {
-            elements: std::iter::repeat(S::zero()).take(degree+1).collect(),
+            elements: std::iter::repeat(S::zero()).take(degree + 1).collect(),
         }
     }
 
@@ -50,12 +50,18 @@ impl<S: Scalar> Polynomial<S> {
     /// starting from the lowest degree
     pub fn from_vec(elements: Vec<S>) -> Self {
         assert_ne!(elements.len(), 0);
-        Polynomial { elements: elements.into_boxed_slice() }
+        Polynomial {
+            elements: elements.into_boxed_slice(),
+        }
     }
 
     /// generate a new polynomial of specific degree
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R, degree: usize) -> Polynomial<S> {
-        Polynomial { elements: std::iter::repeat_with(|| S::random(rng)).take(degree+1).collect() }
+        Polynomial {
+            elements: std::iter::repeat_with(|| S::random(rng))
+                .take(degree + 1)
+                .collect(),
+        }
     }
 
     /// get the value of a polynomial a0 + a1 * x^1 + a2 * x^2 + .. + an * x^n for a value x=at
@@ -88,7 +94,6 @@ impl<S: Scalar> AsMut<[S]> for Polynomial<S> {
         &mut self.elements
     }
 }
-
 
 impl<S: Scalar> std::ops::Add<Polynomial<S>> for Polynomial<S> {
     type Output = Polynomial<S>;
