@@ -95,12 +95,10 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         my: usize,
     ) -> (Phase<G, Round1>, BroadcastPhase1<G>) {
         assert_eq!(committee_pks.len(), environment.nr_members);
-        assert!(my < environment.nr_members);
+        assert!(my <= environment.nr_members);
 
         let pcomm = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
         let pshek = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
-
-        println!("{:?}", pshek.get_coefficients().len());
 
         let mut apubs = Vec::with_capacity(environment.threshold + 1);
         let mut coeff_comms = Vec::with_capacity(environment.threshold + 1);
@@ -117,7 +115,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         #[allow(clippy::needless_range_loop)]
         for i in 0..environment.nr_members {
             // don't generate share for self
-            if i == my {
+            if i == my - 1 {
                 continue;
             } else {
                 let idx = <G::CorrespondingScalar as Scalar>::from_u64((i + 1) as u64);
@@ -129,12 +127,12 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
                 let ecomm = pk.hybrid_encrypt(&share_comm.to_bytes(), rng);
                 let eshek = pk.hybrid_encrypt(&share_shek.to_bytes(), rng);
 
-                encrypted_shares.push((i, ecomm, eshek));
+                encrypted_shares.push((i + 1, ecomm, eshek));
             }
         }
 
         let state = IndividualState {
-            index: my + 1,
+            index: my,
             environment: environment.clone(),
             communication_sk: secret_key.clone(),
             final_share: None,
@@ -172,6 +170,10 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
         let mut decrypted_shares: Vec<IndexedDecryptedShares<G>> =
             Vec::with_capacity(members_state.len());
         for fetched_data in members_state {
+            if fetched_data.get_index() != self.state.index {
+                return (Err(DkgError::FetchedInvalidData), None);
+            }
+
             if let (Some(comm), Some(shek)) = self
                 .state
                 .communication_sk
@@ -196,13 +198,13 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
                     );
                     // todo: should we instead store the sender's index?
                     misbehaving_parties.push((
-                        fetched_data.get_index(),
+                        fetched_data.sender_index,
                         DkgError::ShareValidityFailed,
                         proof,
                     ));
 
                     decrypted_shares.push((
-                        fetched_data.get_index(),
+                        fetched_data.sender_index,
                         comm,
                         shek,
                         fetched_data.committed_coeffs.clone(),
@@ -216,7 +218,7 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
                     rng,
                 );
                 misbehaving_parties.push((
-                    fetched_data.get_index(),
+                    fetched_data.sender_index,
                     DkgError::ScalarOutOfBounds,
                     proof,
                 ));
@@ -265,6 +267,7 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
 /// of the generated polynomials, `committed_coeffs`.
 #[derive(Clone)]
 pub struct MembersFetchedState1<G: PrimeGroupElement> {
+    pub(crate) sender_index: usize,
     pub(crate) indexed_shares: IndexedEncryptedShares<G>,
     pub(crate) committed_coeffs: Vec<G>,
 }
@@ -303,11 +306,12 @@ mod tests {
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public()];
 
-        let (m1, _broadcast1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 0);
-        let (_m2, broadcast2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 1);
+        let (m1, _broadcast1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (_m2, broadcast2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
 
         // Now, party one fetches the state of the other parties, mainly party two and three
         let fetched_state = vec![MembersFetchedState1 {
+            sender_index: 2,
             indexed_shares: broadcast2.encrypted_shares[0].clone(),
             committed_coeffs: broadcast2.committed_coefficients.clone(),
         }];
@@ -337,17 +341,19 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
 
-        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 0);
-        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 1);
-        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 2);
+        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
 
         // Now, party one fetches invalid state of the other parties, mainly party two and three
         let fetched_state = vec![
             MembersFetchedState1 {
+                sender_index: 2,
                 indexed_shares: broad_2.encrypted_shares[0].clone(),
                 committed_coeffs: vec![PrimeGroupElement::zero(); 3],
             },
             MembersFetchedState1 {
+                sender_index: 3,
                 indexed_shares: broad_3.encrypted_shares[0].clone(),
                 committed_coeffs: vec![PrimeGroupElement::zero(); 3],
             },
@@ -379,17 +385,19 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
 
-        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 0);
-        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 1);
-        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 2);
+        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
 
         // Now, party one fetches invalid state of a single party, mainly party two
         let fetched_state = vec![
             MembersFetchedState1 {
+                sender_index: 2,
                 indexed_shares: broad_2.encrypted_shares[0].clone(),
                 committed_coeffs: broad_2.committed_coefficients.clone(),
             },
             MembersFetchedState1 {
+                sender_index: 3,
                 indexed_shares: broad_3.encrypted_shares[0].clone(),
                 committed_coeffs: vec![PrimeGroupElement::zero(); 3],
             },
@@ -411,8 +419,7 @@ mod tests {
         assert_eq!(bd.misbehaving_parties.len(), 1);
 
         // Party 3 should fail
-        // todo: mishandling of indices
-        // assert_eq!(misbehaving_parties[0].0, 2);
+        assert_eq!(bd.misbehaving_parties[0].0, 3);
         assert_eq!(bd.misbehaving_parties[0].1, DkgError::ShareValidityFailed);
         // and the complaint should be valid
         assert!(bd.misbehaving_parties[0]

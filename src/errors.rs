@@ -32,6 +32,10 @@ pub enum DkgError {
     /// scalar, fails
     #[cfg_attr(feature = "std", error("Decoding bytes to Scalar failed."))]
     DecodingToScalarFailed,
+    /// This error occurs when a user fetches data which is not indexed with
+    /// its identifying index
+    #[cfg_attr(feature = "std", error("Fetched wrong data"))]
+    FetchedInvalidData,
 }
 
 impl From<ProofError> for DkgError {
