@@ -9,7 +9,7 @@ use rand_core::{CryptoRng, RngCore};
 /// of the form: A * x^d + B * x^(d-1) + ... + Z * x^0
 #[derive(Clone)]
 pub struct Polynomial<S: Scalar> {
-    pub elements: Vec<S>,
+    elements: Box<[S]>,
 }
 
 impl<S: Scalar> std::fmt::Display for Polynomial<S> {
@@ -29,7 +29,7 @@ impl<S: Scalar> Polynomial<S> {
     /// Generate a new 0 polynomial of specific degree
     pub fn new(degree: usize) -> Self {
         Self {
-            elements: vec![S::zero(); degree + 1],
+            elements: std::iter::repeat(S::zero()).take(degree+1).collect(),
         }
     }
 
@@ -50,18 +50,12 @@ impl<S: Scalar> Polynomial<S> {
     /// starting from the lowest degree
     pub fn from_vec(elements: Vec<S>) -> Self {
         assert_ne!(elements.len(), 0);
-        Polynomial { elements }
+        Polynomial { elements: elements.into_boxed_slice() }
     }
 
     /// generate a new polynomial of specific degree
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R, degree: usize) -> Polynomial<S> {
-        let mut vec = Vec::with_capacity(degree + 1);
-
-        for _ in 0..(degree + 1) {
-            let r = S::random(rng);
-            vec.push(r);
-        }
-        Polynomial { elements: vec }
+        Polynomial { elements: std::iter::repeat_with(|| S::random(rng)).take(degree+1).collect() }
     }
 
     /// get the value of a polynomial a0 + a1 * x^1 + a2 * x^2 + .. + an * x^n for a value x=at
@@ -82,6 +76,19 @@ impl<S: Scalar> Polynomial<S> {
         self.elements.iter()
     }
 }
+
+impl<S: Scalar> AsRef<[S]> for Polynomial<S> {
+    fn as_ref(&self) -> &[S] {
+        &self.elements
+    }
+}
+
+impl<S: Scalar> AsMut<[S]> for Polynomial<S> {
+    fn as_mut(&mut self) -> &mut [S] {
+        &mut self.elements
+    }
+}
+
 
 impl<S: Scalar> std::ops::Add<Polynomial<S>> for Polynomial<S> {
     type Output = Polynomial<S>;
@@ -109,14 +116,14 @@ impl<S: Scalar> std::ops::Mul<Polynomial<S>> for Polynomial<S> {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn mul(self, rhs: Polynomial<S>) -> Self::Output {
         //println!("muling {} * {}", self, rhs);
-        let mut acc = vec![S::zero(); self.degree() + rhs.degree() + 1];
+        let mut result = Self::new(self.degree() + rhs.degree());
         for (left_degree, &left_coeff) in self.elements.iter().enumerate() {
             for (right_degree, &right_coeff) in rhs.elements.iter().enumerate() {
                 let degree = left_degree + right_degree;
-                acc[degree] += left_coeff * right_coeff;
+                result.elements[degree] += left_coeff * right_coeff;
             }
         }
-        Polynomial { elements: acc }
+        result
     }
 }
 
