@@ -19,7 +19,7 @@ pub struct PublicKey<G: PrimeGroupElement> {
     pub pk: G,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 /// ElGamal secret key
 pub struct SecretKey<G: PrimeGroupElement> {
     pub sk: G::CorrespondingScalar,

@@ -132,9 +132,9 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
             G::vartime_multiscalar_multiplication(index_pow, fetched_data.clone().committed_coeffs);
 
         if check_element != multi_scalar {
-            return Err(DkgError::InvalidProofOfMisbehaviour);
+            return Ok(());
         }
 
-        Ok(())
+        Err(DkgError::InvalidProofOfMisbehaviour)
     }
 }

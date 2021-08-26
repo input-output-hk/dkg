@@ -17,10 +17,11 @@ use crate::errors::DkgError;
 use crate::polynomial::Polynomial;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
 /// Environment parameters of the distributed key generation procedure.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Environment<G: PrimeGroupElement> {
     threshold: usize,
     nr_members: usize,
@@ -28,7 +29,7 @@ pub struct Environment<G: PrimeGroupElement> {
 }
 
 /// Private state, generated over the protocol
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct IndividualState<G: PrimeGroupElement> {
     index: usize,
     environment: Environment<G>,
@@ -45,6 +46,18 @@ pub struct Phase<G: PrimeGroupElement, Phase> {
     pub phase: PhantomData<Phase>,
 }
 
+impl<G: PrimeGroupElement, P> Debug for Phase<G, P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Phase").field("state", &self.state).finish()
+    }
+}
+
+impl<G: PrimeGroupElement, P> PartialEq for Phase<G, P> {
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state
+    }
+}
+
 impl<G: PrimeGroupElement> Environment<G> {
     pub fn init(threshold: usize, nr_members: usize, commitment_key: CommitmentKey<G>) -> Self {
         assert!(threshold <= nr_members);
@@ -58,10 +71,15 @@ impl<G: PrimeGroupElement> Environment<G> {
     }
 }
 
+#[derive(Debug)]
 pub struct Initialise {}
+#[derive(Debug)]
 pub struct Round1 {}
+#[derive(Debug)]
 pub struct Round2 {}
+#[derive(Debug)]
 pub struct Round3 {}
+#[derive(Debug)]
 pub struct Round4 {}
 
 pub type DistributedKeyGeneration<G> = Phase<G, Initialise>;
@@ -263,13 +281,6 @@ impl<G: PrimeGroupElement> MembersFetchedState1<G> {
     fn get_index(&self) -> usize {
         self.indexed_shares.0
     }
-
-    // pub fn from_member_state(member_state: &BroadcastPhase1<G>) -> Self {
-    //     Self {
-    //         indexed_shares: member_state.clone().encrypted_shares[0],
-    //         committed_coeffs: member_state.committed_coefficients,
-    //     }
-    // }
 }
 
 #[cfg(test)]
@@ -353,7 +364,7 @@ mod tests {
         // Given that there is a number of misbehaving parties higher than the threshold, proceeding
         // to step 2 should fail.
         let phase_2_faked = m1.to_phase_2(&environment, &fetched_state, &mut rng);
-        assert!(phase_2_faked.0.is_err());
+        assert_eq!(phase_2_faked.0, Err(DkgError::MisbehaviourHigherThreshold));
 
         // And there should be data to broadcast
         assert!(phase_2_faked.1.is_some())
