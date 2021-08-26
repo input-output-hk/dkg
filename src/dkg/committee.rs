@@ -29,8 +29,12 @@ pub struct Environment<G: PrimeGroupElement> {
 }
 
 impl<G: PrimeGroupElement> Environment<G> {
-    pub fn init(threshold: usize, nr_members: usize, commitment_key: CommitmentKey<G>) -> Self{
-        Self { threshold, nr_members, commitment_key }
+    pub fn init(threshold: usize, nr_members: usize, commitment_key: CommitmentKey<G>) -> Self {
+        Self {
+            threshold,
+            nr_members,
+            commitment_key,
+        }
     }
 }
 
@@ -115,39 +119,37 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         plaintiff_index: usize,
         threshold: usize,
     ) -> Result<(), DkgError> {
-        if self
+        let proof1_is_err = self
             .proof_decryption_1
             .verify(
                 &fetched_data.indexed_shares.1,
                 &self.symm_key_1,
                 complaining_pk,
             )
-            .is_err()
-            || self
-                .proof_decryption_2
-                .verify(
-                    &fetched_data.indexed_shares.2,
-                    &self.symm_key_2,
-                    complaining_pk,
-                )
-                .is_err()
-        {
+            .is_err();
+
+        let proof2_is_err = self
+            .proof_decryption_2
+            .verify(
+                &fetched_data.indexed_shares.2,
+                &self.symm_key_2,
+                complaining_pk,
+            )
+            .is_err();
+
+        if proof1_is_err || proof2_is_err {
             return Err(DkgError::InvalidProofOfMisbehaviour);
         }
 
-        let plaintext_1 = match <G::CorrespondingScalar as Scalar>::from_bytes(
+        let plaintext_1 = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.symm_key_1.process(&self.encrypted_shares.1.e2),
-        ) {
-            Some(scalar) => scalar,
-            None => return Err(DkgError::DecodingToScalarFailed),
-        };
+        )
+        .ok_or(DkgError::DecodingToScalarFailed)?;
 
-        let plaintext_2 = match <G::CorrespondingScalar as Scalar>::from_bytes(
+        let plaintext_2 = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.symm_key_2.process(&self.encrypted_shares.2.e2),
-        ) {
-            Some(scalar) => scalar,
-            None => return Err(DkgError::DecodingToScalarFailed),
-        };
+        )
+        .ok_or(DkgError::DecodingToScalarFailed)?;
 
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(plaintiff_index as u64)
             .exp_iter()
@@ -215,7 +217,8 @@ impl<G: PrimeGroupElement> MemberState1<G> {
             coeff_comms.push(coeff_comm);
         }
 
-        let mut encrypted_shares: Vec<IndexedEncryptedShares<G>> = Vec::with_capacity(environment.nr_members - 1);
+        let mut encrypted_shares: Vec<IndexedEncryptedShares<G>> =
+            Vec::with_capacity(environment.nr_members - 1);
         #[allow(clippy::needless_range_loop)]
         for i in 0..environment.nr_members {
             // don't generate share for self
@@ -344,12 +347,8 @@ mod tests {
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public()];
 
-        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 0,
-        );
-        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 1,
-        );
+        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 0);
+        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 1);
 
         // Now, party one fetches the state of the other parties, mainly party two and three
         let fetched_state = vec![MembersFetchedState1 {
@@ -377,16 +376,9 @@ mod tests {
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
-
-        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 0,
-        );
-        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 1,
-        );
-        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 2,
-        );
+        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 0);
+        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 1);
+        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 2);
 
         // Now, party one fetches invalid state of the other parties, mainly party two and three
         let fetched_state = vec![
@@ -403,7 +395,10 @@ mod tests {
         // Given that there is a number of misbehaving parties higher than the threshold, proceeding
         // to step 2 should fail.
         let phase_2_faked = m1.to_phase_2(&environment, &mc1, &fetched_state, &mut rng);
-        assert_eq!(phase_2_faked.validate(&environment), Err(DkgError::MisbehaviourHigherThreshold));
+        assert_eq!(
+            phase_2_faked.validate(&environment),
+            Err(DkgError::MisbehaviourHigherThreshold)
+        );
     }
 
     #[test]
@@ -421,16 +416,9 @@ mod tests {
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
-
-        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 0,
-        );
-        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 1,
-        );
-        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(
-            &mut rng, &environment, &mc, 2,
-        );
+        let m1 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 0);
+        let m2 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 1);
+        let m3 = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 2);
 
         // Now, party one fetches invalid state of a single party, mainly party two
         let fetched_state = vec![
@@ -448,7 +436,9 @@ mod tests {
         // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
         // party 1, and there should be logs of misbehaviour of party 3
 
-        let validated_phase_2 = m1.to_phase_2(&environment, &mc1, &fetched_state, &mut rng).validate(&environment);
+        let validated_phase_2 = m1
+            .to_phase_2(&environment, &mc1, &fetched_state, &mut rng)
+            .validate(&environment);
         assert!(validated_phase_2.is_ok());
 
         let misbehaving_parties = validated_phase_2.unwrap().misbehaving_parties;
@@ -460,6 +450,9 @@ mod tests {
         // assert_eq!(misbehaving_parties[0].0, 2);
         assert_eq!(misbehaving_parties[0].1, DkgError::ShareValidityFailed);
         // and the complaint should be valid
-        assert!(misbehaving_parties[0].2.verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2).is_err());
+        assert!(misbehaving_parties[0]
+            .2
+            .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
+            .is_err());
     }
 }
