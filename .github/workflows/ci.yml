@@ -28,15 +28,6 @@ jobs:
           command: fmt
           args: -- --check
 
-      - name: Restore cargo dependencies
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-deps-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Run cargo clippy
         uses: actions-rs/clippy-check@v1
         continue-on-error: false
