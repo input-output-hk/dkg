@@ -100,8 +100,10 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         let pcomm = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
         let pshek = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
 
-        let mut apubs = Vec::with_capacity(environment.threshold);
-        let mut coeff_comms = Vec::with_capacity(environment.threshold);
+        println!("{:?}", pshek.get_coefficients().len());
+
+        let mut apubs = Vec::with_capacity(environment.threshold + 1);
+        let mut coeff_comms = Vec::with_capacity(environment.threshold + 1);
 
         for (ai, &bi) in pshek.get_coefficients().zip(pcomm.get_coefficients()) {
             let apub = G::generator() * ai;
@@ -132,7 +134,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         }
 
         let state = IndividualState {
-            index: my,
+            index: my + 1,
             environment: environment.clone(),
             communication_sk: secret_key.clone(),
             final_share: None,
@@ -315,7 +317,8 @@ mod tests {
             // broadcast the `data`
         }
 
-        assert!(phase_2.0.is_ok());
+        phase_2.0.unwrap();
+        // assert!(phase_2.0.is_ok());
     }
 
     #[test]
@@ -359,57 +362,62 @@ mod tests {
         assert!(phase_2_faked.1.is_some())
     }
 
-    // #[test]
-    // fn misbehaving_parties() {
-    //     let mut rng = OsRng;
-    //
-    //     let mut shared_string = b"Example of a shared string.".to_owned();
-    //     let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
-    //     let threshold = 2;
-    //     let nr_members = 3;
-    //     let environment = Environment::init(threshold, nr_members, h);
-    //
-    //     let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
-    //     let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
-    //     let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
-    //     let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
-    //
-    //
-    //     let (m1, broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 0);
-    //     let (m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 1);
-    //     let (m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc, 2);
-    //
-    //     // Now, party one fetches invalid state of a single party, mainly party two
-    //     let fetched_state = vec![
-    //         MembersFetchedState1 {
-    //             indexed_shares: broad_2.encrypted_shares[0].clone(),
-    //             committed_coeffs: broad_2.committed_coefficients.clone(),
-    //         },
-    //         MembersFetchedState1 {
-    //             indexed_shares: broad_3.encrypted_shares[0].clone(),
-    //             committed_coeffs: vec![PrimeGroupElement::zero(); 3],
-    //         },
-    //     ];
-    //
-    //     // Given that party 3 submitted encrypted shares which do not correspond to the
-    //     // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
-    //     // party 1, and there should be logs of misbehaviour of party 3
-    //
-    //     let phase_2 = m1
-    //          .to_phase_2(&environment, &mc1, &fetched_state, &mut rng);
-    //     assert!(phase_2.is_ok());
-    //
-    //     // Party 2 should be good
-    //     assert_eq!(broadcast_data.misbehaving_parties.len(), 1);
-    //
-    //     // Party 3 should fail
-    //     // todo: mishandling of indices
-    //     // assert_eq!(misbehaving_parties[0].0, 2);
-    //     assert_eq!(broadcast_data.misbehaving_parties[0].1, DkgError::ShareValidityFailed);
-    //     // and the complaint should be valid
-    //     assert!(broadcast_data.misbehaving_parties[0]
-    //          .2
-    //          .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
-    //          .is_err());
-    // }
+    #[test]
+    fn misbehaving_parties() {
+        let mut rng = OsRng;
+
+        let mut shared_string = b"Example of a shared string.".to_owned();
+        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
+
+        let threshold = 2;
+        let nr_members = 3;
+        let environment = Environment::init(threshold, nr_members, h);
+
+        let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+
+
+        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 0);
+        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 1);
+        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 2);
+
+        // Now, party one fetches invalid state of a single party, mainly party two
+        let fetched_state = vec![
+            MembersFetchedState1 {
+                indexed_shares: broad_2.encrypted_shares[0].clone(),
+                committed_coeffs: broad_2.committed_coefficients.clone(),
+            },
+            MembersFetchedState1 {
+                indexed_shares: broad_3.encrypted_shares[0].clone(),
+                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+            },
+        ];
+
+        // Given that party 3 submitted encrypted shares which do not correspond to the
+        // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
+        // party 1, and there should be logs of misbehaviour of party 3
+
+        let (phase_2, broadcast_data) = m1
+             .to_phase_2(&environment, &fetched_state, &mut rng);
+
+        assert!(phase_2.is_ok());
+        assert!(broadcast_data.is_some());
+
+        let bd = broadcast_data.unwrap();
+
+        // Party 2 should be good
+        assert_eq!(bd.misbehaving_parties.len(), 1);
+
+        // Party 3 should fail
+        // todo: mishandling of indices
+        // assert_eq!(misbehaving_parties[0].0, 2);
+        assert_eq!(bd.misbehaving_parties[0].1, DkgError::ShareValidityFailed);
+        // and the complaint should be valid
+        assert!(bd.misbehaving_parties[0]
+             .2
+             .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
+             .is_err());
+    }
 }
