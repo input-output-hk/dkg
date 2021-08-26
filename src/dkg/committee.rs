@@ -38,6 +38,7 @@ pub struct IndividualState<G: PrimeGroupElement> {
     public_share: Option<MemberPublicShare<G>>,
     indexed_received_shares: Option<Vec<IndexedDecryptedShares<G>>>,
     indexed_committed_shares: Option<Vec<(usize, Vec<G>)>>,
+    qualified_set: Vec<usize>,
 }
 
 /// Definition of a phase
@@ -71,18 +72,15 @@ impl<G: PrimeGroupElement> Environment<G> {
     }
 }
 
-#[derive(Debug)]
-pub struct Initialise {}
-#[derive(Debug)]
-pub struct Round1 {}
-#[derive(Debug)]
-pub struct Round2 {}
-#[derive(Debug)]
-pub struct Round3 {}
-#[derive(Debug)]
-pub struct Round4 {}
 
 pub type DistributedKeyGeneration<G> = Phase<G, Initialise>;
+
+pub struct Initialise {}
+pub struct Phase1 {}
+pub struct Phase2 {}
+pub struct Phase3 {}
+pub struct Phase4 {}
+
 impl<G: PrimeGroupElement> Phase<G, Initialise> {
     /// Generate a new member state from random. This is round 1 of the protocol. Receives as
     /// input the threshold `t`, the expected number of participants, `n`, common reference string
@@ -95,7 +93,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         secret_key: &MemberCommunicationKey<G>,
         committee_pks: &[MemberCommunicationPublicKey<G>],
         my: usize,
-    ) -> (Phase<G, Round1>, BroadcastPhase1<G>) {
+    ) -> (Phase<G, Phase1>, BroadcastPhase1<G>) {
         assert_eq!(committee_pks.len(), environment.nr_members);
         assert!(my <= environment.nr_members);
 
@@ -133,6 +131,8 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
             }
         }
 
+        let qualified_set = vec![1; environment.nr_members];
+
         let state = IndividualState {
             index: my,
             environment: environment.clone(),
@@ -141,10 +141,11 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
             public_share: None,
             indexed_received_shares: None,
             indexed_committed_shares: None,
+            qualified_set,
         };
 
         (
-            Phase::<G, Round1> {
+            Phase::<G, Phase1> {
                 state: Box::new(state),
                 phase: PhantomData,
             },
@@ -156,7 +157,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
     }
 }
 
-impl<G: PrimeGroupElement> Phase<G, Round1> {
+impl<G: PrimeGroupElement> Phase<G, Phase1> {
     /// Function to proceed to phase 2. It checks and keeps track of misbehaving parties. If this
     /// step does not validate, the member is not allowed to proceed to phase 3.
     pub fn to_phase_2<R>(
@@ -165,12 +166,13 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
         members_state: &[MembersFetchedState1<G>],
         rng: &mut R,
     ) -> (
-        Result<Phase<G, Round2>, DkgError>,
+        Result<Phase<G, Phase2>, DkgError>,
         Option<BroadcastPhase2<G>>,
     )
     where
         R: CryptoRng + RngCore,
     {
+        let mut qualified_set = self.state.qualified_set.clone();
         let mut misbehaving_parties: Vec<MisbehavingPartiesState1<G>> = Vec::new();
         let mut decrypted_shares: Vec<IndexedDecryptedShares<G>> =
             Vec::with_capacity(members_state.len());
@@ -201,7 +203,7 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
                         &self.state.communication_sk,
                         rng,
                     );
-                    // todo: should we instead store the sender's index?
+                    qualified_set[fetched_data.sender_index - 1] = 0;
                     misbehaving_parties.push((
                         fetched_data.sender_index,
                         DkgError::ShareValidityFailed,
@@ -222,6 +224,7 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
                     &self.state.communication_sk,
                     rng,
                 );
+                qualified_set[fetched_data.sender_index - 1] = 0;
                 misbehaving_parties.push((
                     fetched_data.sender_index,
                     DkgError::ScalarOutOfBounds,
@@ -247,6 +250,7 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
             public_share: None,
             indexed_received_shares: Some(decrypted_shares),
             indexed_committed_shares: None,
+            qualified_set,
         };
 
         let broadcast_message = if misbehaving_parties.is_empty() {
@@ -258,12 +262,22 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
         };
 
         (
-            Ok(Phase::<G, Round2> {
+            Ok(Phase::<G, Phase2> {
                 state: Box::new(updated_state),
                 phase: PhantomData,
             }),
             broadcast_message,
         )
+    }
+}
+
+impl<G: PrimeGroupElement> Phase<G, Phase2> {
+    pub fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
+        for broadcast in broadcast_complaints {
+            for misbehaving_parties in &broadcast.misbehaving_parties {
+                self.state.qualified_set[misbehaving_parties.0 - 1] &= 0;
+            }
+        }
     }
 }
 
@@ -414,8 +428,9 @@ mod tests {
         let (phase_2, broadcast_data) = m1.to_phase_2(&environment, &fetched_state, &mut rng);
 
         assert!(phase_2.is_ok());
-        assert!(broadcast_data.is_some());
+        let mut unwrapped_phase = phase_2.unwrap();
 
+        assert!(broadcast_data.is_some());
         let bd = broadcast_data.unwrap();
 
         // Party 2 should be good
@@ -429,5 +444,9 @@ mod tests {
             .2
             .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
             .is_err());
+
+        // The qualified set should be [1, 1, 0]
+        unwrapped_phase.compute_qualified_set(&[bd]);
+        assert_eq!(unwrapped_phase.state.qualified_set, [1, 1, 0])
     }
 }
