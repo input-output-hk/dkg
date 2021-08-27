@@ -37,6 +37,10 @@ pub struct BroadcastPhase2<G: PrimeGroupElement> {
     pub misbehaving_parties: Vec<MisbehavingPartiesState1<G>>,
 }
 
+pub struct BroadcastPhase3<G: PrimeGroupElement> {
+    pub committed_coefficients: Vec<G>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProofOfMisbehaviour<G: PrimeGroupElement> {
     symm_key_1: SymmetricKey<G>,

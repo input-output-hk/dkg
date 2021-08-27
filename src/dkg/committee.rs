@@ -12,7 +12,7 @@ use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
 use crate::cryptography::commitment::CommitmentKey;
-use crate::dkg::broadcast::{MisbehavingPartiesState1, ProofOfMisbehaviour};
+use crate::dkg::broadcast::{BroadcastPhase3, MisbehavingPartiesState1, ProofOfMisbehaviour};
 use crate::errors::DkgError;
 use crate::polynomial::Polynomial;
 use crate::traits::{PrimeGroupElement, Scalar};
@@ -34,6 +34,7 @@ pub struct IndividualState<G: PrimeGroupElement> {
     index: usize,
     environment: Environment<G>,
     communication_sk: MemberCommunicationKey<G>,
+    committed_coefficients: Vec<G>,
     final_share: Option<MemberSecretShare<G>>,
     public_share: Option<MemberPublicShare<G>>,
     indexed_received_shares: Option<Vec<IndexedDecryptedShares<G>>>,
@@ -137,6 +138,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
             index: my,
             environment: environment.clone(),
             communication_sk: secret_key.clone(),
+            committed_coefficients: apubs,
             final_share: None,
             public_share: None,
             indexed_received_shares: None,
@@ -156,12 +158,12 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         )
     }
 }
-
+#[allow(clippy::type_complexity)]
 impl<G: PrimeGroupElement> Phase<G, Phase1> {
     /// Function to proceed to phase 2. It checks and keeps track of misbehaving parties. If this
     /// step does not validate, the member is not allowed to proceed to phase 3.
     pub fn to_phase_2<R>(
-        &self,
+        mut self,
         environment: &Environment<G>,
         members_state: &[MembersFetchedState1<G>],
         rng: &mut R,
@@ -242,16 +244,8 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
             );
         }
 
-        let updated_state = IndividualState {
-            index: self.state.index,
-            environment: self.state.environment.clone(),
-            communication_sk: self.state.communication_sk.clone(),
-            final_share: None,
-            public_share: None,
-            indexed_received_shares: Some(decrypted_shares),
-            indexed_committed_shares: None,
-            qualified_set,
-        };
+        self.state.indexed_received_shares = Some(decrypted_shares);
+        self.state.qualified_set = qualified_set;
 
         let broadcast_message = if misbehaving_parties.is_empty() {
             None
@@ -262,24 +256,41 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
         };
 
         (
-            Ok(Phase::<G, Phase2> {
-                state: Box::new(updated_state),
-                phase: PhantomData,
-            }),
+            Ok(Phase::<G, Phase2> { state: self.state, phase: PhantomData}),
             broadcast_message,
         )
     }
 }
 
-// todo: we probably want to check if the set is too small. In which case we wouldn't take a mutable
-// reference, but rather return again a phase? We'll see.
 impl<G: PrimeGroupElement> Phase<G, Phase2> {
-    pub fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
+    fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
         for broadcast in broadcast_complaints {
             for misbehaving_parties in &broadcast.misbehaving_parties {
                 self.state.qualified_set[misbehaving_parties.0 - 1] &= 0;
             }
         }
+    }
+
+    pub fn to_phase_3(
+        mut self,
+        broadcast_complaints: &[BroadcastPhase2<G>],
+    ) -> (Result<Phase<G, Phase3>, DkgError>, Option<BroadcastPhase3<G>>) {
+        self.compute_qualified_set(broadcast_complaints);
+        if self.state.qualified_set.len() < self.state.environment.threshold {
+            return (Err(DkgError::MisbehaviourHigherThreshold), None);
+        }
+
+        let broadcast = Some(BroadcastPhase3 {
+            committed_coefficients: self.state.committed_coefficients.clone(),
+        });
+
+        (
+            Ok(Phase::<G, Phase3> {
+                state: self.state,
+                phase: PhantomData,
+            }),
+            broadcast,
+        )
     }
 }
 
@@ -430,7 +441,7 @@ mod tests {
         let (phase_2, broadcast_data) = m1.to_phase_2(&environment, &fetched_state, &mut rng);
 
         assert!(phase_2.is_ok());
-        let mut unwrapped_phase = phase_2.unwrap();
+        let unwrapped_phase = phase_2.unwrap();
 
         assert!(broadcast_data.is_some());
         let bd = broadcast_data.unwrap();
@@ -448,7 +459,8 @@ mod tests {
             .is_ok());
 
         // The qualified set should be [1, 1, 0]
-        unwrapped_phase.compute_qualified_set(&[bd]);
-        assert_eq!(unwrapped_phase.state.qualified_set, [1, 1, 0])
+        let (phase_3, _broadcast_data_3) = unwrapped_phase.to_phase_3(&[bd]);
+        assert!(phase_3.is_ok());
+        assert_eq!(phase_3.unwrap().state.qualified_set, [1, 1, 0])
     }
 }
