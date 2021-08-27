@@ -12,7 +12,7 @@ use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
 use crate::cryptography::commitment::CommitmentKey;
-use crate::dkg::broadcast::{BroadcastPhase3, MisbehavingPartiesState1, ProofOfMisbehaviour};
+use crate::dkg::broadcast::{BroadcastPhase3, BroadcastPhase4, MisbehavingPartiesState1, ProofOfMisbehaviour, MisbehavingPartiesState3};
 use crate::errors::DkgError;
 use crate::polynomial::Polynomial;
 use crate::traits::{PrimeGroupElement, Scalar};
@@ -37,8 +37,8 @@ pub struct IndividualState<G: PrimeGroupElement> {
     committed_coefficients: Vec<G>,
     final_share: Option<MemberSecretShare<G>>,
     public_share: Option<MemberPublicShare<G>>,
-    indexed_received_shares: Option<Vec<IndexedDecryptedShares<G>>>,
-    indexed_committed_shares: Option<Vec<(usize, Vec<G>)>>,
+    indexed_received_shares: Option<Vec<Option<IndexedDecryptedShares<G>>>>,
+    indexed_committed_shares: Option<Vec<Option<(usize, Vec<G>)>>>,
     qualified_set: Vec<usize>,
 }
 
@@ -176,8 +176,7 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
     {
         let mut qualified_set = self.state.qualified_set.clone();
         let mut misbehaving_parties: Vec<MisbehavingPartiesState1<G>> = Vec::new();
-        let mut decrypted_shares: Vec<IndexedDecryptedShares<G>> =
-            Vec::with_capacity(members_state.len());
+        let mut decrypted_shares: Vec<Option<IndexedDecryptedShares<G>>> = vec![None; self.state.environment.nr_members];
         for fetched_data in members_state {
             if fetched_data.get_index() != self.state.index {
                 return (Err(DkgError::FetchedInvalidData), None);
@@ -199,6 +198,12 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
                     fetched_data.committed_coeffs.clone(),
                 );
 
+                decrypted_shares[fetched_data.sender_index - 1] = Some((
+                    comm,
+                    shek,
+                    fetched_data.committed_coeffs.clone(),
+                ));
+
                 if check_element != multi_scalar {
                     let proof = ProofOfMisbehaviour::generate(
                         &fetched_data.indexed_shares,
@@ -210,13 +215,6 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
                         fetched_data.sender_index,
                         DkgError::ShareValidityFailed,
                         proof,
-                    ));
-
-                    decrypted_shares.push((
-                        fetched_data.sender_index,
-                        comm,
-                        shek,
-                        fetched_data.committed_coeffs.clone(),
                     ));
                 }
             } else {
@@ -256,7 +254,10 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
         };
 
         (
-            Ok(Phase::<G, Phase2> { state: self.state, phase: PhantomData}),
+            Ok(Phase::<G, Phase2> {
+                state: self.state,
+                phase: PhantomData,
+            }),
             broadcast_message,
         )
     }
@@ -274,7 +275,10 @@ impl<G: PrimeGroupElement> Phase<G, Phase2> {
     pub fn to_phase_3(
         mut self,
         broadcast_complaints: &[BroadcastPhase2<G>],
-    ) -> (Result<Phase<G, Phase3>, DkgError>, Option<BroadcastPhase3<G>>) {
+    ) -> (
+        Result<Phase<G, Phase3>, DkgError>,
+        Option<BroadcastPhase3<G>>,
+    ) {
         self.compute_qualified_set(broadcast_complaints);
         if self.state.qualified_set.len() < self.state.environment.threshold {
             return (Err(DkgError::MisbehaviourHigherThreshold), None);
@@ -294,6 +298,58 @@ impl<G: PrimeGroupElement> Phase<G, Phase2> {
     }
 }
 
+impl<G: PrimeGroupElement> Phase<G, Phase3> {
+    pub fn to_phase_4(
+        self,
+        fetched_state_3: &[MembersFetchedState3<G>],
+    ) -> (
+        Result<Phase<G, Phase4>, DkgError>,
+        Option<BroadcastPhase4<G>>,
+    ) {
+        let mut honest = self.state.qualified_set.clone();
+        let received_shares =  self.state.indexed_received_shares.clone().expect("We shouldn't be here if we have no received shares");
+        let mut misbehaving_parties: Vec<MisbehavingPartiesState3<G>> = Vec::new();
+
+        for fetched_commitments in fetched_state_3 {
+            // if the fetched commitment is from a disqualified player, we skip
+            if honest[fetched_commitments.sender_index] != 0 {
+                let index_pow =
+                    <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
+                        .exp_iter()
+                        .take(self.state.environment.threshold + 1);
+
+                let indexed_shares = received_shares[fetched_commitments.sender_index].clone().expect("If it is part of honest members, their shares should be recorded");
+
+                let check_element = G::generator() * indexed_shares.0;
+                let multi_scalar = G::vartime_multiscalar_multiplication(
+                    index_pow,
+                    fetched_commitments.committed_coefficients.clone(),
+                );
+
+                if check_element != multi_scalar {
+                    honest[fetched_commitments.sender_index] &= 0;
+                    misbehaving_parties.push((fetched_commitments.sender_index, indexed_shares.0, indexed_shares.1));
+                }
+            }
+        }
+
+        let broadcast = if misbehaving_parties.is_empty() {
+            None
+        } else {
+            Some(BroadcastPhase4{ misbehaving_parties })
+        };
+
+        if honest.iter().sum::<usize>() < self.state.environment.threshold {
+            return (Err(DkgError::MisbehaviourHigherThreshold), broadcast);
+        }
+
+        (Ok(Phase::<G, Phase4> {
+            state: self.state.clone(),
+            phase: PhantomData,
+        }), broadcast)
+    }
+}
+
 /// State of the members after round 1. This structure contains the indexed encrypted
 /// shares of every other participant, `indexed_shares`, and the committed coefficients
 /// of the generated polynomials, `committed_coeffs`.
@@ -308,6 +364,12 @@ impl<G: PrimeGroupElement> MembersFetchedState1<G> {
     fn get_index(&self) -> usize {
         self.indexed_shares.0
     }
+}
+
+#[derive(Clone)]
+pub struct MembersFetchedState3<G: PrimeGroupElement> {
+    pub(crate) sender_index: usize,
+    pub(crate) committed_coefficients: Vec<G>,
 }
 
 #[cfg(test)]

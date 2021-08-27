@@ -17,7 +17,6 @@ pub type IndexedEncryptedShares<G> = (usize, HybridCiphertext<G>, HybridCipherte
 /// Type that contains the index of the receiver and its two decrypted
 /// shares, together with the corresponding blinding commitment.
 pub type IndexedDecryptedShares<G> = (
-    usize,
     <G as PrimeGroupElement>::CorrespondingScalar,
     <G as PrimeGroupElement>::CorrespondingScalar,
     Vec<G>,
@@ -27,6 +26,12 @@ pub type IndexedDecryptedShares<G> = (
 /// consist of the misbehaving member's index, the error which failed,
 /// and a proof of correctness of the misbehaviour claim.
 pub type MisbehavingPartiesState1<G> = (usize, DkgError, ProofOfMisbehaviour<G>);
+
+pub type MisbehavingPartiesState3<G> = (
+    usize,
+    <G as PrimeGroupElement>::CorrespondingScalar,
+    <G as PrimeGroupElement>::CorrespondingScalar,
+);
 
 pub struct BroadcastPhase1<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
@@ -39,6 +44,10 @@ pub struct BroadcastPhase2<G: PrimeGroupElement> {
 
 pub struct BroadcastPhase3<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
+}
+
+pub struct BroadcastPhase4<G: PrimeGroupElement> {
+    pub misbehaving_parties: Vec<MisbehavingPartiesState3<G>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
