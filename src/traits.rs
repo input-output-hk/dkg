@@ -1,4 +1,5 @@
-use blake2::Blake2b;
+use blake2::Digest;
+use generic_array::typenum::U64;
 use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::Debug;
@@ -8,9 +9,6 @@ pub trait Scalar:
     Copy
     + Clone
     + Debug
-    + Default
-    + Send
-    + Sync
     + Eq
     + Neg<Output = Self>
     + Add<Self, Output = Self>
@@ -28,7 +26,7 @@ pub trait Scalar:
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 
-    fn hash_to_scalar(input: Blake2b) -> Self;
+    fn hash_to_scalar<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self;
 
     fn from_u64(scalar: u64) -> Self;
 
@@ -76,9 +74,6 @@ pub trait PrimeGroupElement:
     Copy
     + Clone
     + Debug
-    + Default
-    + Send
-    + Sync
     + Eq
     + Neg<Output = Self>
     + Add<Self, Output = Self>
@@ -104,7 +99,7 @@ pub trait PrimeGroupElement:
 
     fn zero() -> Self;
 
-    fn hash_to_group(input: &[u8]) -> Self;
+    fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self;
 
     fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
 

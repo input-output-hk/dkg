@@ -286,12 +286,11 @@ std_ops_gen_nsym!(Ciphertext, PrimeGroupElement, Mul, Ciphertext, mul);
 mod tests {
     use super::*;
 
-    use blake2::Blake2b;
     use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
     use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
     use curve25519_dalek::scalar::Scalar as RScalar;
     use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
-    use generic_array::typenum::U32;
+    use generic_array::typenum::{U32, U64};
 
     use generic_array::GenericArray;
     use rand_core::OsRng;
@@ -331,8 +330,8 @@ mod tests {
             RScalar::one()
         }
 
-        fn hash_to_scalar(input: Blake2b) -> Self {
-            RScalar::from_hash::<Blake2b>(input)
+        fn hash_to_scalar<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
+            RScalar::hash_from_bytes::<H>(input)
         }
     }
 
@@ -349,8 +348,8 @@ mod tests {
             RistrettoPoint::identity()
         }
 
-        fn hash_to_group(input: &[u8]) -> Self {
-            RistrettoPoint::hash_from_bytes::<Blake2b>(input)
+        fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
+            RistrettoPoint::hash_from_bytes::<H>(input)
         }
 
         fn to_bytes(&self) -> GenericArray<u8, U32> {

@@ -1,4 +1,5 @@
 use crate::traits::{PrimeGroupElement, Scalar};
+use blake2::Blake2b;
 use rand_core::{CryptoRng, RngCore};
 
 /// Pedersen Commitment key
@@ -11,7 +12,7 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
     /// Generate a new random commitment key by hashin the input
     pub fn generate(bytes: &[u8]) -> Self {
         CommitmentKey::<G> {
-            h: G::hash_to_group(bytes),
+            h: G::hash_to_group::<Blake2b>(bytes),
         }
     }
     /// Return a commitment with the given opening, `o`

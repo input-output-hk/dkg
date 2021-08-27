@@ -72,7 +72,6 @@ impl<G: PrimeGroupElement> Environment<G> {
     }
 }
 
-
 pub type DistributedKeyGeneration<G> = Phase<G, Initialise>;
 
 pub struct Initialise {}
@@ -87,6 +86,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
     /// `crs`, `committee_pks`, and the party's index `my`. Initiates a Pedersen-VSS as a dealer,
     /// and returns the committed coefficients of its polynomials, together with encryption of the
     /// shares of the other different members.
+    /// todo: this function could define the ordering of the public keys.
     pub fn init<R: RngCore + CryptoRng>(
         rng: &mut R,
         environment: &Environment<G>,
@@ -271,6 +271,8 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
     }
 }
 
+// todo: we probably want to check if the set is too small. In which case we wouldn't take a mutable
+// reference, but rather return again a phase? We'll see.
 impl<G: PrimeGroupElement> Phase<G, Phase2> {
     pub fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
         for broadcast in broadcast_complaints {
@@ -443,7 +445,7 @@ mod tests {
         assert!(bd.misbehaving_parties[0]
             .2
             .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
-            .is_err());
+            .is_ok());
 
         // The qualified set should be [1, 1, 0]
         unwrapped_phase.compute_qualified_set(&[bd]);

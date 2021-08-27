@@ -1,5 +1,5 @@
 use crate::traits::{PrimeGroupElement, Scalar};
-use blake2::{Blake2b, Digest};
+use blake2::Blake2b;
 
 /// Challenge context for Discrete Logarithm Equality proof. The common reference string
 /// are two EC bases, and the statement consists of two EC points.
@@ -7,7 +7,7 @@ use blake2::{Blake2b, Digest};
 /// computed in the sigma protocol, `a1` and `a2`, and the full
 /// statement.
 #[derive(Debug, Clone)]
-pub struct ChallengeContext(Blake2b);
+pub struct ChallengeContext(Vec<u8>);
 
 impl ChallengeContext {
     /// Initialise the challenge context, by including the common reference string and the full statement
@@ -17,11 +17,11 @@ impl ChallengeContext {
         point_1: &G,
         point_2: &G,
     ) -> Self {
-        let mut ctx = Blake2b::new();
-        ctx.update(&base_1.to_bytes());
-        ctx.update(&base_2.to_bytes());
-        ctx.update(&point_1.to_bytes());
-        ctx.update(&point_2.to_bytes());
+        let mut ctx: Vec<u8> = Vec::new();
+        ctx.extend_from_slice(&base_1.to_bytes());
+        ctx.extend_from_slice(&base_2.to_bytes());
+        ctx.extend_from_slice(&point_1.to_bytes());
+        ctx.extend_from_slice(&point_2.to_bytes());
 
         ChallengeContext(ctx)
     }
@@ -34,9 +34,9 @@ impl ChallengeContext {
         a1: &G,
         a2: &G,
     ) -> G::CorrespondingScalar {
-        self.0.update(&a1.to_bytes());
-        self.0.update(&a2.to_bytes());
+        self.0.extend_from_slice(&a1.to_bytes());
+        self.0.extend_from_slice(&a2.to_bytes());
 
-        <G as PrimeGroupElement>::CorrespondingScalar::hash_to_scalar(self.clone().0)
+        <G as PrimeGroupElement>::CorrespondingScalar::hash_to_scalar::<Blake2b>(&self.clone().0)
     }
 }

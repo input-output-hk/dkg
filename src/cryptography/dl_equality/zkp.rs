@@ -77,6 +77,7 @@ impl<G: PrimeGroupElement> Zkp<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use blake2::Blake2b;
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar;
     use rand_core::OsRng;
@@ -86,8 +87,8 @@ mod tests {
         let mut r: OsRng = OsRng;
 
         let dlog = Scalar::random(&mut r);
-        let base_1 = RistrettoPoint::hash_to_group(&[0u8]);
-        let base_2 = RistrettoPoint::hash_to_group(&[0u8]);
+        let base_1 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
+        let base_2 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
         let point_1 = base_1 * dlog;
         let point_2 = base_2 * dlog;
 
@@ -96,7 +97,7 @@ mod tests {
 
         assert!(proof.verify(&base_1, &base_2, &point_1, &point_2).is_ok());
 
-        let base_faked = RistrettoPoint::hash_to_group(&[13u8]);
+        let base_faked = RistrettoPoint::hash_to_group::<Blake2b>(&[13u8]);
 
         assert!(proof
             .verify(&base_1, &base_faked, &point_1, &point_2)
