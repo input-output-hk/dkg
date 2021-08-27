@@ -64,7 +64,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
         R: RngCore + CryptoRng,
     {
         let r = G::CorrespondingScalar::random(rng);
-        self.encrypt_point_with_r(&message, &r)
+        self.encrypt_point_with_r(message, &r)
     }
 
     // Given a `message` represented as a group element, return a ciphertext and the
@@ -78,7 +78,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
         R: RngCore + CryptoRng,
     {
         let r = G::CorrespondingScalar::random(rng);
-        (self.encrypt_point_with_r(&message, &r), r)
+        (self.encrypt_point_with_r(message, &r), r)
     }
 
     // Given a `message` represented as a group element, and some value used as `randomness`,
@@ -181,7 +181,7 @@ impl<G: PrimeGroupElement> SymmetricKey<G> {
         let h = Blake2b::new().chain(&self.group_repr.to_bytes()).finalize();
         let key = GenericArray::from_slice(&h[0..32]);
         let nonce = GenericArray::from_slice(&h[32..44]);
-        ChaCha20::new(&key, &nonce)
+        ChaCha20::new(key, nonce)
     }
 
     // Encrypt/decrypt a message using the symmetric key
