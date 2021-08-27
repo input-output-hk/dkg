@@ -1,9 +1,8 @@
 //! Structures related to the broadcast messages
 use crate::cryptography::elgamal::SymmetricKey;
 use crate::cryptography::{
-    commitment::CommitmentKey,
-    correct_hybrid_decryption_key::CorrectHybridDecrKeyZkp,
-    elgamal::{HybridCiphertext},
+    commitment::CommitmentKey, correct_hybrid_decryption_key::CorrectHybridDecrKeyZkp,
+    elgamal::HybridCiphertext,
 };
 use crate::dkg::committee::MembersFetchedState1;
 use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
@@ -117,12 +116,12 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         let plaintext_1 = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.symm_key_1.process(&self.encrypted_shares.1.e2),
         )
-            .ok_or(DkgError::DecodingToScalarFailed)?;
+        .ok_or(DkgError::DecodingToScalarFailed)?;
 
         let plaintext_2 = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.symm_key_2.process(&self.encrypted_shares.2.e2),
         )
-            .ok_or(DkgError::DecodingToScalarFailed)?;
+        .ok_or(DkgError::DecodingToScalarFailed)?;
 
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(plaintiff_index as u64)
             .exp_iter()

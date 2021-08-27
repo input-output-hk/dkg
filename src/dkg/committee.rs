@@ -11,9 +11,7 @@ pub use super::broadcast::{IndexedDecryptedShares, IndexedEncryptedShares};
 use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
-use crate::cryptography::{
-    commitment::CommitmentKey,
-};
+use crate::cryptography::commitment::CommitmentKey;
 use crate::dkg::broadcast::{MisbehavingPartiesState1, ProofOfMisbehaviour};
 use crate::errors::DkgError;
 use crate::polynomial::Polynomial;
@@ -148,7 +146,10 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
         environment: &Environment<G>,
         members_state: &[MembersFetchedState1<G>],
         rng: &mut R,
-    ) -> (Result<Phase<G, Round2>, DkgError>, Option<BroadcastPhase2<G>>)
+    ) -> (
+        Result<Phase<G, Round2>, DkgError>,
+        Option<BroadcastPhase2<G>>,
+    )
     where
         R: CryptoRng + RngCore,
     {
@@ -243,7 +244,7 @@ impl<G: PrimeGroupElement> Phase<G, Round1> {
                 state: Box::new(updated_state),
                 phase: PhantomData,
             }),
-            broadcast_message
+            broadcast_message,
         )
     }
 }
@@ -292,8 +293,10 @@ mod tests {
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public()];
 
-        let (m1, _broadcast1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
-        let (_m2, broadcast2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (m1, _broadcast1) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (_m2, broadcast2) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
 
         // Now, party one fetches the state of the other parties, mainly party two and three
         let fetched_state = vec![MembersFetchedState1 {
@@ -326,10 +329,12 @@ mod tests {
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
-
-        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
-        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
-        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+        let (m1, _broad_1) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (_m2, broad_2) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (_m3, broad_3) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
 
         // Now, party one fetches invalid state of the other parties, mainly party two and three
         let fetched_state = vec![
@@ -370,10 +375,12 @@ mod tests {
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
-
-        let (m1, _broad_1) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
-        let (_m2, broad_2) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
-        let (_m3, broad_3) = DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+        let (m1, _broad_1) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (_m2, broad_2) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (_m3, broad_3) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
 
         // Now, party one fetches invalid state of a single party, mainly party two
         let fetched_state = vec![
@@ -393,8 +400,7 @@ mod tests {
         // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
         // party 1, and there should be logs of misbehaviour of party 3
 
-        let (phase_2, broadcast_data) = m1
-             .to_phase_2(&environment, &fetched_state, &mut rng);
+        let (phase_2, broadcast_data) = m1.to_phase_2(&environment, &fetched_state, &mut rng);
 
         assert!(phase_2.is_ok());
         assert!(broadcast_data.is_some());
@@ -409,8 +415,8 @@ mod tests {
         assert_eq!(bd.misbehaving_parties[0].1, DkgError::ShareValidityFailed);
         // and the complaint should be valid
         assert!(bd.misbehaving_parties[0]
-             .2
-             .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
-             .is_err());
+            .2
+            .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
+            .is_err());
     }
 }
