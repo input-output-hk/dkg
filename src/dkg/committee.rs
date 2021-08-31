@@ -306,30 +306,33 @@ impl<G: PrimeGroupElement> Phase<G, Phase3> {
         Result<Phase<G, Phase4>, DkgError>,
         Option<BroadcastPhase4<G>>,
     ) {
-        let mut honest = self.state.qualified_set.clone();
-        let received_shares =  self.state.indexed_received_shares.clone().expect("We shouldn't be here if we have no received shares");
+        let mut honest = vec![0usize; self.state.environment.nr_members];
+        honest[self.state.index - 1] |= 1; /* self is considered honest */
+        let received_shares =  self.state.indexed_received_shares.clone().expect("We shouldn't be here if we have not received shares");
         let mut misbehaving_parties: Vec<MisbehavingPartiesState3<G>> = Vec::new();
 
         for fetched_commitments in fetched_state_3 {
             // if the fetched commitment is from a disqualified player, we skip
-            if honest[fetched_commitments.sender_index] != 0 {
+            if self.state.qualified_set[fetched_commitments.sender_index - 1] != 0 {
                 let index_pow =
                     <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
                         .exp_iter()
                         .take(self.state.environment.threshold + 1);
 
-                let indexed_shares = received_shares[fetched_commitments.sender_index].clone().expect("If it is part of honest members, their shares should be recorded");
+                let indexed_shares = received_shares[fetched_commitments.sender_index - 1].clone().expect("If it is part of honest members, their shares should be recorded");
 
-                let check_element = G::generator() * indexed_shares.0;
+                let check_element = G::generator() * indexed_shares.1;
                 let multi_scalar = G::vartime_multiscalar_multiplication(
                     index_pow,
                     fetched_commitments.committed_coefficients.clone(),
                 );
 
                 if check_element != multi_scalar {
-                    honest[fetched_commitments.sender_index] &= 0;
                     misbehaving_parties.push((fetched_commitments.sender_index, indexed_shares.0, indexed_shares.1));
+                    continue;
                 }
+
+                honest[fetched_commitments.sender_index - 1] |= 1;
             }
         }
 
@@ -591,7 +594,7 @@ mod tests {
         assert!(party_1_phase_3.is_ok() && party_2_phase_3.is_ok());
 
         // Fetched state of party 1. We have mimic'ed that party three stopped participating.
-        let fetched_state_phase_3 = vec![
+        let party_1_fetched_state_phase_3 = vec![
             MembersFetchedState3 {
                 sender_index: 2,
                 committed_coefficients: party_2_broadcast_data_3.unwrap().committed_coefficients
@@ -600,8 +603,20 @@ mod tests {
 
         // The protocol should finalise, given that we have two honest parties finalising the protocol
         // which is higher than the threshold
-        assert!(party_1_phase_3.unwrap().to_phase_4(&fetched_state_phase_3).0.is_ok());
+        assert!(party_1_phase_3.unwrap().to_phase_4(&party_1_fetched_state_phase_3).0.is_ok());
 
-        // todo: check that complaints are nicely covered (protocol aborts, and complains are valid)
+        // If party three stops participating, and party 1 misbehaves, the protocol fails for party
+        // 2, and there should be the proof of misbehaviour of party 1.
+        let party_2_fetched_state_phase_3 = vec![
+            MembersFetchedState3::<RistrettoPoint> {
+                sender_index: 1,
+                committed_coefficients: vec![PrimeGroupElement::generator(); threshold + 1]
+            }
+        ];
+
+        let failing_phase = party_2_phase_3.unwrap().to_phase_4(&party_2_fetched_state_phase_3);
+        assert!(failing_phase.0.is_err());
+        assert!(failing_phase.1.is_some());
+
     }
 }
