@@ -619,4 +619,144 @@ mod tests {
         assert!(failing_phase.1.is_some());
 
     }
+
+    fn full_run() -> Result<(), DkgError> {
+        let mut rng = OsRng;
+
+        let mut shared_string = b"Example of a shared string.".to_owned();
+        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
+
+        let threshold = 2;
+        let nr_members = 3;
+        let environment = Environment::init(threshold, nr_members, h);
+
+        let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+
+        let (m1, broad_1) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (m2, broad_2) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (m3, broad_3) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+
+        // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
+        // blockchain. All parties fetched the data.
+
+        // Fetched state of party 1
+        let fetched_state_1 = vec![
+            MembersFetchedState1 {
+                sender_index: 2,
+                indexed_shares: broad_2.encrypted_shares[0].clone(),
+                committed_coeffs: broad_2.committed_coefficients.clone(),
+            },
+            MembersFetchedState1 {
+                sender_index: 3,
+                indexed_shares: broad_3.encrypted_shares[0].clone(),
+                committed_coeffs: broad_3.committed_coefficients.clone(),
+            },
+        ];
+
+        // Fetched state of party 2
+        let fetched_state_2 = vec![
+            MembersFetchedState1 {
+                sender_index: 1,
+                indexed_shares: broad_1.encrypted_shares[0].clone(),
+                committed_coeffs: broad_1.committed_coefficients.clone(),
+            },
+            MembersFetchedState1 {
+                sender_index: 3,
+                indexed_shares: broad_3.encrypted_shares[1].clone(),
+                committed_coeffs: broad_3.committed_coefficients.clone(),
+            },
+        ];
+
+        // Fetched state of party 3
+        let fetched_state_3 = vec![
+            MembersFetchedState1 {
+                sender_index: 1,
+                indexed_shares: broad_1.encrypted_shares[1].clone(),
+                committed_coeffs: broad_1.committed_coefficients.clone(),
+            },
+            MembersFetchedState1 {
+                sender_index: 2,
+                indexed_shares: broad_2.encrypted_shares[1].clone(),
+                committed_coeffs: broad_2.committed_coefficients.clone(),
+            },
+        ];
+
+        // Now we proceed to phase two.
+        let (party_1_phase_2, party_1_phase_2_broadcast_data) = m1.to_phase_2(&environment, &fetched_state_1, &mut rng);
+        let (party_2_phase_2, party_2_phase_2_broadcast_data) = m2.to_phase_2(&environment, &fetched_state_2, &mut rng);
+        let (party_3_phase_2, party_3_phase_2_broadcast_data) = m3.to_phase_2(&environment, &fetched_state_3, &mut rng);
+
+        if party_1_phase_2_broadcast_data.is_some() || party_2_phase_2_broadcast_data.is_some() || party_3_phase_2_broadcast_data.is_some() {
+            // then they publish the data.
+        }
+
+        // We proceed to phase three (with no input because there was no misbehaving parties).
+        let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2?.to_phase_3(&[]);
+        let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.to_phase_3(&[]);
+        let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.to_phase_3(&[]);
+
+        // A valid run of phase 3 will always output a broadcast message. The parties fetch it,
+        // and use it to proceed to phase 4.
+        let committed_coefficients_1 = party_1_broadcast_data_3.expect("valid runs returns something").committed_coefficients;
+        let committed_coefficients_2 = party_2_broadcast_data_3.expect("valid runs returns something").committed_coefficients;
+        let committed_coefficients_3 = party_3_broadcast_data_3.expect("valid runs returns something").committed_coefficients;
+
+        // Fetched state of party 1.
+        let fetched_state_1_phase_3 = vec![
+            MembersFetchedState3 {
+                sender_index: 2,
+                committed_coefficients: committed_coefficients_2.clone()
+            },
+
+            MembersFetchedState3 {
+                sender_index: 3,
+                committed_coefficients: committed_coefficients_3.clone()
+            },
+        ];
+
+        // Fetched state of party 1.
+        let fetched_state_2_phase_3 = vec![
+            MembersFetchedState3 {
+                sender_index: 1,
+                committed_coefficients: committed_coefficients_1.clone()
+            },
+
+            MembersFetchedState3 {
+                sender_index: 3,
+                committed_coefficients: committed_coefficients_3
+            },
+        ];
+
+        // Fetched state of party 1.
+        let fetched_state_3_phase_3 = vec![
+            MembersFetchedState3 {
+                sender_index: 2,
+                committed_coefficients: committed_coefficients_2
+            },
+
+            MembersFetchedState3 {
+                sender_index: 1,
+                committed_coefficients: committed_coefficients_1
+            },
+        ];
+
+        // We proceed to phase three (with no input because there was no misbehaving parties).
+        let (_party_1_phase_4, _party_1_broadcast_data_4) = party_1_phase_3?.to_phase_4(&fetched_state_1_phase_3);
+        let (_party_2_phase_4, _party_2_broadcast_data_4) = party_2_phase_3?.to_phase_4(&fetched_state_2_phase_3);
+        let (_party_3_phase_4, _party_3_broadcast_data_4) = party_3_phase_3?.to_phase_4(&fetched_state_3_phase_3);
+
+        Ok(())
+    }
+    #[test]
+    fn full_valid_run() {
+        let run: Result<(), DkgError> = full_run();
+
+        assert!(run.is_ok());
+    }
 }
