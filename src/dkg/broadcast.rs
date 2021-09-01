@@ -33,6 +33,11 @@ pub type MisbehavingPartiesState3<G> = (
     <G as PrimeGroupElement>::CorrespondingScalar,
 );
 
+pub type MisbehavingPartiesState4<G> = (
+    usize,
+    <G as PrimeGroupElement>::CorrespondingScalar,
+);
+
 pub struct BroadcastPhase1<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
     pub encrypted_shares: Vec<IndexedEncryptedShares<G>>,
@@ -48,6 +53,10 @@ pub struct BroadcastPhase3<G: PrimeGroupElement> {
 
 pub struct BroadcastPhase4<G: PrimeGroupElement> {
     pub misbehaving_parties: Vec<MisbehavingPartiesState3<G>>,
+}
+
+pub struct BroadcastPhase5<G: PrimeGroupElement> {
+    pub misbehaving_parties: Vec<MisbehavingPartiesState4<G>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

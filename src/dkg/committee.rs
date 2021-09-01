@@ -12,7 +12,7 @@ use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
 use crate::cryptography::commitment::CommitmentKey;
-use crate::dkg::broadcast::{BroadcastPhase3, BroadcastPhase4, MisbehavingPartiesState1, ProofOfMisbehaviour, MisbehavingPartiesState3};
+use crate::dkg::broadcast::{BroadcastPhase3, BroadcastPhase4, MisbehavingPartiesState1, ProofOfMisbehaviour, MisbehavingPartiesState3, BroadcastPhase5, MisbehavingPartiesState4};
 use crate::errors::DkgError;
 use crate::polynomial::Polynomial;
 use crate::traits::{PrimeGroupElement, Scalar};
@@ -37,8 +37,11 @@ pub struct IndividualState<G: PrimeGroupElement> {
     committed_coefficients: Vec<G>,
     final_share: Option<MemberSecretShare<G>>,
     public_share: Option<MemberPublicShare<G>>,
+    master_public_key: Option<MemberPublicShare<G>>,
     indexed_received_shares: Option<Vec<Option<IndexedDecryptedShares<G>>>>,
     indexed_committed_shares: Option<Vec<Option<(usize, Vec<G>)>>>,
+    /// Set of parties whose secret needs to be reconstructed
+    reconstructable_set: Vec<usize>,
     qualified_set: Vec<usize>,
 }
 
@@ -80,6 +83,7 @@ pub struct Phase1 {}
 pub struct Phase2 {}
 pub struct Phase3 {}
 pub struct Phase4 {}
+pub struct Phase5 {}
 
 impl<G: PrimeGroupElement> Phase<G, Initialise> {
     /// Generate a new member state from random. This is round 1 of the protocol. Receives as
@@ -133,6 +137,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         }
 
         let qualified_set = vec![1; environment.nr_members];
+        let reconstructable_set = vec![0; environment.nr_members];
 
         let state = IndividualState {
             index: my,
@@ -141,8 +146,10 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
             committed_coefficients: apubs,
             final_share: None,
             public_share: None,
+            master_public_key: None,
             indexed_received_shares: None,
             indexed_committed_shares: None,
+            reconstructable_set,
             qualified_set,
         };
 
@@ -346,12 +353,78 @@ impl<G: PrimeGroupElement> Phase<G, Phase3> {
             return (Err(DkgError::MisbehaviourHigherThreshold), broadcast);
         }
 
+        // todo: set the reconstructable set
+
         (Ok(Phase::<G, Phase4> {
             state: self.state.clone(),
             phase: PhantomData,
         }), broadcast)
     }
 }
+
+
+impl<G: PrimeGroupElement> Phase<G, Phase4> {
+    pub fn to_phase_5(
+        mut self,
+        broadcast_complaints: &[BroadcastPhase4<G>],
+    ) -> (
+        Result<Phase<G, Phase5>, DkgError>,
+        Option<BroadcastPhase5<G>>,
+    ) {
+        // todo: handle reconstrubtable set as `to_phse_4`
+        // misbehaving parties will have their shares disclosed to generate the master public key
+        let mut reconstruct_shares: Vec<MisbehavingPartiesState4<G>> = Vec::new();
+        let received_shares =  self.state.indexed_received_shares.clone().expect("We shouldn't be here if we have not received shares");
+
+        for fetched_complaints in broadcast_complaints {
+            for state in &fetched_complaints.misbehaving_parties {
+                // If party is disqualified, we ignore it
+                if self.state.qualified_set[state.0 - 1] != 0 {
+                    let indexed_shares = received_shares[state.0 - 1].as_ref().expect("If it is part of honest members, their shares should be recorded");
+                    reconstruct_shares.push((state.0, indexed_shares.1));
+                    self.state.reconstructable_set[state.0 - 1] |= 1;
+                }
+            }
+        }
+
+        let total_honest = self.state.qualified_set.iter().sum::<usize>() - self.state.reconstructable_set.iter().sum::<usize>();
+        if total_honest < self.state.environment.threshold {
+            return (Err(DkgError::MisbehaviourHigherThreshold), None);
+        }
+
+        (
+            Ok(Phase::<G, Phase5> {
+                state: self.state.clone(),
+                phase: PhantomData,
+            }),
+            Some(BroadcastPhase5 { misbehaving_parties: reconstruct_shares})
+        )
+    }
+}
+
+// impl<G: PrimeGroupElement> Phase<G, Phase5> {
+//     pub fn finalise(
+//         self,
+//         // todo: Need to do lagrange interpolation
+//         _broadcast_complaints: &[BroadcastPhase5<G>],
+//     ) -> Result<MasterPublicKey<G>, DkgError> {
+//         let mut master_key = G::zero();
+//         let received_shares =  self.state.indexed_committed_shares.clone().expect("We shouldn't be here if we have not received shares");
+//
+//         for i in 0..self.state.environment.nr_members {
+//             if self.state.reconstructable_set[i] == 1 && self.state.qualified_set[i] != 1 {
+//                 panic!("this should not happen");
+//             } else if self.state.reconstructable_set[i] == 1 {
+//                 // todo: need to handle this
+//                 continue;
+//             } else {
+//                 master_key = master_key + received_shares[i].expect("If it is part of honest members, their shares should be recorded").;
+//             }
+//         }
+//
+//         Ok(MasterPublicKey(PublicKey{ pk: master_key }))
+//     }
+// }
 
 /// State of the members after round 1. This structure contains the indexed encrypted
 /// shares of every other participant, `indexed_shares`, and the committed coefficients
