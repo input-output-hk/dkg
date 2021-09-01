@@ -69,7 +69,7 @@
 //!
 //! fn full_run() -> Result<(), DkgError> {
 //!         use DKG::dkg::committee::{MembersFetchedState1, MembersFetchedState3};
-//! let mut rng = OsRng;
+//!         let mut rng = OsRng;
 //!
 //!         let mut shared_string = b"Example of a shared string.".to_owned();
 //!         let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);

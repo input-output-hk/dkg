@@ -61,9 +61,11 @@ impl<G: PrimeGroupElement, P> PartialEq for Phase<G, P> {
 }
 
 impl<G: PrimeGroupElement> Environment<G> {
-    pub fn init(threshold: usize, nr_members: usize, commitment_key: CommitmentKey<G>) -> Self {
+    pub fn init(threshold: usize, nr_members: usize, ck_gen_bytes: &[u8]) -> Self {
         assert!(threshold <= nr_members);
         assert!(threshold > nr_members / 2);
+
+        let commitment_key = CommitmentKey::generate(ck_gen_bytes);
 
         Self {
             threshold,
@@ -478,10 +480,9 @@ mod tests {
         let mut rng = OsRng;
 
         let mut shared_string = b"Example of a shared string.".to_owned();
-        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
         let threshold = 2;
         let nr_members = 2;
-        let environment = Environment::init(threshold, nr_members, h);
+        let environment = Environment::init(threshold, nr_members, &shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
@@ -513,10 +514,9 @@ mod tests {
         let mut rng = OsRng;
 
         let mut shared_string = b"Example of a shared string.".to_owned();
-        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
         let threshold = 2;
         let nr_members = 3;
-        let environment = Environment::init(threshold, nr_members, h);
+        let environment = Environment::init(threshold, nr_members, &shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
@@ -558,11 +558,10 @@ mod tests {
         let mut rng = OsRng;
 
         let mut shared_string = b"Example of a shared string.".to_owned();
-        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
 
         let threshold = 2;
         let nr_members = 3;
-        let environment = Environment::init(threshold, nr_members, h);
+        let environment = Environment::init(threshold, nr_members, &shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
@@ -625,11 +624,10 @@ mod tests {
         let mut rng = OsRng;
 
         let mut shared_string = b"Example of a shared string.".to_owned();
-        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
 
         let threshold = 2;
         let nr_members = 3;
-        let environment = Environment::init(threshold, nr_members, h);
+        let environment = Environment::init(threshold, nr_members, &shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
@@ -718,11 +716,10 @@ mod tests {
         let mut rng = OsRng;
 
         let mut shared_string = b"Example of a shared string.".to_owned();
-        let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
 
         let threshold = 2;
         let nr_members = 3;
-        let environment = Environment::init(threshold, nr_members, h);
+        let environment = Environment::init(threshold, nr_members, &shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
