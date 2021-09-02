@@ -174,7 +174,7 @@ mod tests {
         let y2 = polynomial.evaluate(&x2);
         let y3 = polynomial.evaluate(&x3);
 
-        let evaluated_points = [y1, y3, y2];
+        let evaluated_points = [y1, y2, y3];
 
         let interpolated_zero =
             lagrange_interpolation(RScalar::zero(), &evaluated_points, &indices);

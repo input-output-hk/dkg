@@ -109,7 +109,7 @@
 //!         let fetched_state_2 = vec![
 //!             MembersFetchedState1 {
 //!                 sender_index: 1,
-//!                 indexed_shares: broad_1.encrypted_shares[0].clone(),
+//!                 indexed_shares: broad_1.encrypted_shares[1].clone(),
 //!                 committed_coeffs: broad_1.committed_coefficients.clone(),
 //!             },
 //!             MembersFetchedState1 {
@@ -123,12 +123,12 @@
 //!         let fetched_state_3 = vec![
 //!             MembersFetchedState1 {
 //!                 sender_index: 1,
-//!                 indexed_shares: broad_1.encrypted_shares[1].clone(),
+//!                 indexed_shares: broad_1.encrypted_shares[2].clone(),
 //!                 committed_coeffs: broad_1.committed_coefficients.clone(),
 //!             },
 //!             MembersFetchedState1 {
 //!                 sender_index: 2,
-//!                 indexed_shares: broad_2.encrypted_shares[1].clone(),
+//!                 indexed_shares: broad_2.encrypted_shares[2].clone(),
 //!                 committed_coeffs: broad_2.committed_coefficients.clone(),
 //!             },
 //!         ];

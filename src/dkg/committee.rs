@@ -134,7 +134,8 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         // We initialise the vector of committed and decrypted shares, to which we include
         // the shares of the party initialising
         let mut committed_shares = vec![None; environment.nr_members];
-        let mut decrypted_shares: Vec<Option<IndexedDecryptedShares<G>>> = vec![None; environment.nr_members];
+        let mut decrypted_shares: Vec<Option<IndexedDecryptedShares<G>>> =
+            vec![None; environment.nr_members];
 
         let pcomm = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
         let pshek = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
@@ -357,12 +358,17 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
         let mut secret_share = G::CorrespondingScalar::zero();
         for i in 0..self.state.environment.nr_members {
             if self.state.qualified_set[i] == 1 {
-                secret_share = secret_share + self.state.indexed_received_shares[i].as_ref().expect("Qualified member should have a share").1;
+                secret_share += self.state.indexed_received_shares[i]
+                    .as_ref()
+                    .expect("Qualified member should have a share")
+                    .1;
             }
         }
 
-        self.state.public_share = Some(MemberPublicShare(PublicKey{ pk: G::generator() * &secret_share}));
-        self.state.final_share = Some(MemberSecretShare(SecretKey { sk: secret_share} ));
+        self.state.public_share = Some(MemberPublicShare(PublicKey {
+            pk: G::generator() * secret_share,
+        }));
+        self.state.final_share = Some(MemberSecretShare(SecretKey { sk: secret_share }));
 
         (
             Ok(Phases::<G, Phase3> {
@@ -394,10 +400,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
     ) {
         let mut honest = vec![0usize; self.state.environment.nr_members];
         honest[self.state.index - 1] |= 1; /* self is considered honest */
-        let received_shares = self
-            .state
-            .indexed_received_shares
-            .clone();
+        let received_shares = self.state.indexed_received_shares.clone();
         let mut misbehaving_parties: Vec<MisbehavingPartiesState3<G>> = Vec::new();
 
         for fetched_commitments in fetched_state_3 {
@@ -483,10 +486,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
         // misbehaving parties will have their shares disclosed to generate the master public key
         let mut reconstruct_shares: Vec<Option<MisbehavingPartiesState4<G>>> =
             vec![None; self.state.environment.nr_members];
-        let received_shares = self
-            .state
-            .indexed_received_shares
-            .clone();
+        let received_shares = self.state.indexed_received_shares.clone();
 
         if let Some(complaints) = broadcast_complaints {
             for fetched_complaints in complaints {
@@ -558,9 +558,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
 
         let committed_shares = self.state.indexed_committed_shares;
 
-        let received_shares = self
-            .state
-            .indexed_received_shares;
+        let received_shares = self.state.indexed_received_shares;
 
         for i in 0..self.state.environment.nr_members {
             if self.state.reconstructable_set[i] == 1 && self.state.qualified_set[i] != 1 {
@@ -1049,10 +1047,12 @@ mod tests {
         let sk_1 = unwraped_1_phase_4.state.final_share.clone();
         let unwraped_2_phase_4 = party_2_phase_4?;
         let sk_2 = unwraped_2_phase_4.state.final_share.clone();
+        let unwraped_3_phase_4 = party_3_phase_4?;
+        let sk_3 = unwraped_3_phase_4.state.final_share.clone();
 
         let (party_1_phase_5, _party_1_broadcast_data_5) = unwraped_1_phase_4.proceed(None);
         let (party_2_phase_5, _party_2_broadcast_data_5) = unwraped_2_phase_4.proceed(None);
-        let (party_3_phase_5, _party_3_broadcast_data_5) = party_3_phase_4?.proceed(None);
+        let (party_3_phase_5, _party_3_broadcast_data_5) = unwraped_3_phase_4.proceed(None);
 
         // Finally, the different parties generate the master public key. No misbehaving parties, so
         // broadcast of phase 5 is None.
@@ -1066,11 +1066,17 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
-        let indices = [Scalar::from_u64(1), Scalar::from_u64(1)];
-        let evaluated_points = [sk_1.unwrap().0.sk, sk_2.unwrap().0.sk];
+        let indices = [
+            Scalar::from_u64(1),
+            Scalar::from_u64(2),
+            Scalar::from_u64(3),
+        ];
+        let evaluated_points = [sk_1.unwrap().0.sk, sk_2.unwrap().0.sk, sk_3.unwrap().0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
-        let interpolated_mk = MasterPublicKey(PublicKey { pk: RistrettoPoint::generator() * master_key});
+        let interpolated_mk = MasterPublicKey(PublicKey {
+            pk: RistrettoPoint::generator() * master_key,
+        });
 
         assert_eq!(interpolated_mk, mk_1);
 
