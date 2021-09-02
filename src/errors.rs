@@ -40,6 +40,10 @@ pub enum DkgError {
     /// shares (i.e. a number of shares equal or higher than the threshold)
     #[cfg_attr(feature = "std", error("Insufficient shares for recovery of index {}"))]
     InsufficientSharesForRecovery(usize),
+    /// This error occurs when the local master key generation is not consistent with the public
+    /// state
+    #[cfg_attr(feature = "std", error("Inconsistent master key generation"))]
+    InconsistentMasterKey,
 }
 
 impl From<ProofError> for DkgError {
