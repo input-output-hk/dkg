@@ -36,6 +36,10 @@ pub enum DkgError {
     /// its identifying index
     #[cfg_attr(feature = "std", error("Fetched wrong data"))]
     FetchedInvalidData,
+    /// This error occurs when we try to recover a secret without having sufficient
+    /// shares (i.e. a number of shares equal or higher than the threshold)
+    #[cfg_attr(feature = "std", error("Insufficient shares for recovery of index {}"))]
+    InsufficientSharesForRecovery(usize),
 }
 
 impl From<ProofError> for DkgError {

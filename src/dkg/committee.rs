@@ -6,12 +6,14 @@ use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
 use crate::cryptography::commitment::CommitmentKey;
+use crate::cryptography::elgamal::PublicKey;
 use crate::dkg::broadcast::{
     BroadcastPhase3, BroadcastPhase4, BroadcastPhase5, MisbehavingPartiesState1,
     MisbehavingPartiesState3, MisbehavingPartiesState4, ProofOfMisbehaviour,
 };
+use crate::dkg::procedure_keys::MasterPublicKey;
 use crate::errors::DkgError;
-use crate::polynomial::Polynomial;
+use crate::polynomial::{lagrange_interpolation, Polynomial};
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::{Debug, Formatter};
@@ -447,6 +449,8 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
     /// use their shares. However, they no longer participate in the protocol, and instead the
     /// remaining parties reconstruct the shares. To do so, this function keeps track, in
     /// `self.state.reconstructable_set` of all parties whose secret needs to be reconstructed.
+    /// This function broadcasts the shares of the parties that misbehaved in the previous phase,
+    /// and whose secret needs to be reconstructed.
     ///
     /// # Errors
     ///
@@ -461,7 +465,8 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
     ) {
         // todo: handle reconstrubtable set as `to_phse_4`
         // misbehaving parties will have their shares disclosed to generate the master public key
-        let mut reconstruct_shares: Vec<MisbehavingPartiesState4<G>> = Vec::new();
+        let mut reconstruct_shares: Vec<Option<MisbehavingPartiesState4<G>>> =
+            vec![None; self.state.environment.nr_members];
         let received_shares = self
             .state
             .indexed_received_shares
@@ -475,7 +480,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
                     let indexed_shares = received_shares[state.0 - 1]
                         .as_ref()
                         .expect("If it is part of honest members, their shares should be recorded");
-                    reconstruct_shares.push((state.0, indexed_shares.1));
+                    reconstruct_shares[state.0] = Some(indexed_shares.1);
                     self.state.reconstructable_set[state.0 - 1] |= 1;
                 }
             }
@@ -499,29 +504,109 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
     }
 }
 
-// impl<G: PrimeGroupElement> Phase<G, Phase5> {
-//     pub fn finalise(
-//         self,
-//         // todo: Need to do lagrange interpolation
-//         _broadcast_complaints: &[BroadcastPhase5<G>],
-//     ) -> Result<MasterPublicKey<G>, DkgError> {
-//         let mut master_key = G::zero();
-//         let received_shares =  self.state.indexed_committed_shares.clone().expect("We shouldn't be here if we have not received shares");
-//
-//         for i in 0..self.state.environment.nr_members {
-//             if self.state.reconstructable_set[i] == 1 && self.state.qualified_set[i] != 1 {
-//                 panic!("this should not happen");
-//             } else if self.state.reconstructable_set[i] == 1 {
-//                 // todo: need to handle this
-//                 continue;
-//             } else {
-//                 master_key = master_key + received_shares[i].expect("If it is part of honest members, their shares should be recorded").;
-//             }
-//         }
-//
-//         Ok(MasterPublicKey(PublicKey{ pk: master_key }))
-//     }
-// }
+impl<G: PrimeGroupElement> Phases<G, Phase5> {
+    /// This phase transition finalises the DKG protocol. It takes as input the broadcast complaints
+    /// from the previous phase, and returns the master public key using the key shares of the
+    /// honest parties, and reconstructing the shares of the misbehaving parties. This last point
+    /// is the main essence of this function, as we need to perform the lagrange interpolation for
+    /// the members that are part of the `qualified_set` but that have misbehaved in Phase 3. The
+    /// shares shared in Phase 4 are used to reconstruct such shares. During reconstruction, we need
+    /// at least `t` points for every secret to reconstruct, and therefore require the participation
+    /// in Phase 4 of at least `t` honest parties.
+    ///
+    /// The function first defines the `final_parties`, which are those in the `qualified_set`
+    /// which are not in the `reconstructable_set`. Let `p(0)` be the polynomial value that we
+    /// want to interpolate. The points over which the polynomial is
+    /// evaluated are those where there is a `1` in `final_parties`, and the `p(i)`s need to be
+    /// recovered from the `broadcast_complaints` from the previous section, and the
+    /// `indexed_received_shares` stores in the `state`.
+    ///
+    /// # Errors
+    ///
+    /// If `final_parties` is smaller than the threshold, it returns an error.
+    pub fn finalise(
+        self,
+        broadcast_complaints: &[MembersFetchedState5<G>],
+    ) -> Result<MasterPublicKey<G>, DkgError> {
+        let mut master_key = G::zero();
+        // set of qualified without counting the misbehaving of the last round. We need this to
+        // compute the lagrange interpolation of the misbehaving parties.
+        let final_parties: Vec<usize> = self
+            .state
+            .qualified_set
+            .iter()
+            .zip(self.state.reconstructable_set.iter())
+            .map(|(i, j)| i ^ j)
+            .collect();
+
+        let committed_shares = self
+            .state
+            .indexed_committed_shares
+            .as_ref()
+            .expect("We shouldn't be here if we have not received shares");
+
+        let received_shares = self
+            .state
+            .indexed_received_shares
+            .expect("This should exist if we are at this stage");
+
+        for i in 0..self.state.environment.nr_members {
+            if self.state.reconstructable_set[i] == 1 && self.state.qualified_set[i] != 1 {
+                panic!("Only qualified members should be reconstructed");
+            } else if self.state.reconstructable_set[i] == 1 {
+                // Then we need to reconstruct, using the data from the broadcast_complaints
+                // For that we perform the lagrange interpolation
+                let mut indices: Vec<G::CorrespondingScalar> = Vec::new();
+                let mut evaluated_points: Vec<G::CorrespondingScalar> = Vec::new();
+
+                // We first include the parties index and share
+                indices.push(G::CorrespondingScalar::from_u64(self.state.index as u64));
+                evaluated_points.push(
+                    received_shares[i]
+                        .as_ref()
+                        .expect("There should be a share for a qualified member")
+                        .1,
+                );
+
+                for disclosed_shares in broadcast_complaints {
+                    // if it is not within the final parties, we ignore it
+                    if final_parties[disclosed_shares.sender_index] == 1 {
+                        if let Some(share) =
+                            disclosed_shares.disclosed_shares.misbehaving_parties[i]
+                        {
+                            indices.push(G::CorrespondingScalar::from_u64(
+                                disclosed_shares.sender_index as u64,
+                            ));
+                            evaluated_points.push(share);
+                        }
+                    }
+                }
+
+                // Now we check if we have sufficient shares to reconstruct the secret. Note that
+                // the size of `indices` and that of `evaluated_points` is the same.
+                if indices.len() < self.state.environment.threshold {
+                    return Err(DkgError::InsufficientSharesForRecovery(i));
+                }
+
+                // If we have sufficient, then we interpolate at zero
+                let recovered_secret = lagrange_interpolation(
+                    G::CorrespondingScalar::zero(),
+                    &evaluated_points,
+                    &indices,
+                );
+                master_key = master_key + G::generator() * recovered_secret;
+            } else {
+                master_key = master_key
+                    + committed_shares[i]
+                        .as_ref()
+                        .expect("If it is part of honest members, their shares should be recorded")
+                        .1[0];
+            }
+        }
+
+        Ok(MasterPublicKey(PublicKey { pk: master_key }))
+    }
+}
 
 /// State of the members after round 1. This structure contains the indexed encrypted
 /// shares of every other participant, `indexed_shares`, and the committed coefficients
@@ -543,6 +628,12 @@ impl<G: PrimeGroupElement> MembersFetchedState1<G> {
 pub struct MembersFetchedState3<G: PrimeGroupElement> {
     pub sender_index: usize,
     pub committed_coefficients: Vec<G>,
+}
+
+#[derive(Clone)]
+pub struct MembersFetchedState5<G: PrimeGroupElement> {
+    pub sender_index: usize,
+    pub disclosed_shares: BroadcastPhase5<G>,
 }
 
 #[cfg(test)]
@@ -687,7 +778,13 @@ mod tests {
         // and the complaint should be valid
         assert!(bd.misbehaving_parties[0]
             .2
-            .verify(&mc1.to_public(), &fetched_state[1], &environment.commitment_key, 2, 2)
+            .verify(
+                &mc1.to_public(),
+                &fetched_state[1],
+                &environment.commitment_key,
+                2,
+                2
+            )
             .is_ok());
 
         // The qualified set should be [1, 1, 0]

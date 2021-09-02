@@ -33,7 +33,7 @@ pub type MisbehavingPartiesState3<G> = (
     <G as PrimeGroupElement>::CorrespondingScalar,
 );
 
-pub type MisbehavingPartiesState4<G> = (usize, <G as PrimeGroupElement>::CorrespondingScalar);
+pub type MisbehavingPartiesState4<G> = <G as PrimeGroupElement>::CorrespondingScalar;
 
 pub struct BroadcastPhase1<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
@@ -52,8 +52,9 @@ pub struct BroadcastPhase4<G: PrimeGroupElement> {
     pub misbehaving_parties: Vec<MisbehavingPartiesState3<G>>,
 }
 
+#[derive(Clone)]
 pub struct BroadcastPhase5<G: PrimeGroupElement> {
-    pub misbehaving_parties: Vec<MisbehavingPartiesState4<G>>,
+    pub misbehaving_parties: Vec<Option<MisbehavingPartiesState4<G>>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
