@@ -51,6 +51,8 @@ pub trait Scalar:
 
     fn one() -> Self;
 
+    fn inverse(&self) -> Self;
+
     fn exp_iter(&self) -> ScalarExp<Self> {
         let next_exp_x = Self::one();
         ScalarExp {

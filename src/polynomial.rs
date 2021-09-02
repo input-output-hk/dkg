@@ -1,7 +1,7 @@
 //! Module implementing polynomial with trait bounds.
 #![allow(dead_code)]
 
-use crate::traits::Scalar;
+use crate::traits::{Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 /// A polynomial of specific degree d
@@ -132,10 +132,50 @@ impl<S: Scalar> std::ops::Mul<Polynomial<S>> for Polynomial<S> {
     }
 }
 
+fn lagrange_coefficient<S: Scalar>(evaluation_point: S, coefficient_index: S, indices: &[S]) -> S {
+    let mut result = S::one();
+    for &i in indices {
+        if i != coefficient_index {
+            result = result * (evaluation_point - i) * (coefficient_index - i).inverse();
+        }
+    }
+    result
+}
+
+pub fn lagrange_interpolation<S: Scalar>(evaluation_point: S, evaluated_points: &[S], indices: &[S]) -> S {
+    assert_eq!(evaluated_points.len(), indices.len());
+    let mut result = S::zero();
+    for (&x, &y) in indices.iter().zip(evaluated_points.iter()) {
+        let lagrange_coefficient = lagrange_coefficient(evaluation_point, x, indices);
+        result = result + (lagrange_coefficient * y);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use curve25519_dalek::scalar::Scalar as RScalar;
+    #[test]
+    fn lagrange() {
+        let polynomial = Polynomial::<RScalar>::new(2).set2(RScalar::from_u64(13), RScalar::from_u64(2));
+        let x1 = RScalar::from_u64(5);
+        let x2 = RScalar::from_u64(7);
+        let x3 = RScalar::from_u64(2);
+
+        let indices = [x1, x2, x3];
+
+        let y1 = polynomial.evaluate(&x1);
+        let y2 = polynomial.evaluate(&x2);
+        let y3 = polynomial.evaluate(&x3);
+
+        let evaluated_points = [y1, y2, y3];
+
+        let interpolated_zero = lagrange_interpolation(RScalar::zero(), &evaluated_points, &indices);
+        let expected_zero = polynomial.evaluate(&RScalar::zero());
+
+        assert_eq!(interpolated_zero, expected_zero);
+    }
     #[test]
     fn poly_tests() {
         let poly_deg_4 = Polynomial::<RScalar>::new(4).set2(RScalar::one(), RScalar::from_u64(3));

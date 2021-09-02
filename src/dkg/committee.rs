@@ -556,7 +556,7 @@ mod tests {
     fn valid_phase_2() {
         let mut rng = OsRng;
 
-        let mut shared_string = b"Example of a shared string.".to_owned();
+        let shared_string = b"Example of a shared string.".to_owned();
         let threshold = 2;
         let nr_members = 2;
         let environment = Environment::init(threshold, nr_members, &shared_string);
@@ -590,7 +590,7 @@ mod tests {
     fn invalid_phase_2() {
         let mut rng = OsRng;
 
-        let mut shared_string = b"Example of a shared string.".to_owned();
+        let shared_string = b"Example of a shared string.".to_owned();
         let threshold = 2;
         let nr_members = 3;
         let environment = Environment::init(threshold, nr_members, &shared_string);
@@ -634,7 +634,7 @@ mod tests {
     fn misbehaving_parties() {
         let mut rng = OsRng;
 
-        let mut shared_string = b"Example of a shared string.".to_owned();
+        let shared_string = b"Example of a shared string.".to_owned();
 
         let threshold = 2;
         let nr_members = 3;
@@ -687,7 +687,7 @@ mod tests {
         // and the complaint should be valid
         assert!(bd.misbehaving_parties[0]
             .2
-            .verify(&mc1.to_public(), &fetched_state[1], &h, 2, 2)
+            .verify(&mc1.to_public(), &fetched_state[1], &environment.commitment_key, 2, 2)
             .is_ok());
 
         // The qualified set should be [1, 1, 0]
@@ -700,7 +700,7 @@ mod tests {
     fn phase_4_tests() {
         let mut rng = OsRng;
 
-        let mut shared_string = b"Example of a shared string.".to_owned();
+        let shared_string = b"Example of a shared string.".to_owned();
 
         let threshold = 2;
         let nr_members = 3;
@@ -792,7 +792,7 @@ mod tests {
     fn full_run() -> Result<(), DkgError> {
         let mut rng = OsRng;
 
-        let mut shared_string = b"Example of a shared string.".to_owned();
+        let shared_string = b"Example of a shared string.".to_owned();
 
         let threshold = 2;
         let nr_members = 3;

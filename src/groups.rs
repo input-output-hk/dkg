@@ -43,6 +43,10 @@ impl Scalar for RScalar {
         RScalar::one()
     }
 
+    fn inverse(&self) -> Self {
+        self.invert()
+    }
+
     fn hash_to_scalar<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
         RScalar::hash_from_bytes::<H>(input)
     }

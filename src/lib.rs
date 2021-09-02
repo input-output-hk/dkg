@@ -71,12 +71,10 @@
 //!         use DKG::dkg::committee::{MembersFetchedState1, MembersFetchedState3};
 //!         let mut rng = OsRng;
 //!
-//!         let mut shared_string = b"Example of a shared string.".to_owned();
-//!         let h = CommitmentKey::<RistrettoPoint>::generate(&mut shared_string);
-//!
+//!         let shared_string = b"Example of a shared string.".to_owned();
 //!         let threshold = 2;
 //!         let nr_members = 3;
-//!         let environment = Environment::init(threshold, nr_members, h);
+//!         let environment = Environment::init(threshold, nr_members, &shared_string);
 //!
 //!         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
 //!         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
