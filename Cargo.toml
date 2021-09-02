@@ -16,3 +16,9 @@ curve25519-dalek = "3"
 [dev-dependencies]
 rand = "0.7"
 blake2 = "0.9"
+
+[package.metadata.docs.rs]
+rustdoc-args = [
+    "--html-in-header",
+    "katex-header.html"
+]

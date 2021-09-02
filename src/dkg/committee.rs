@@ -43,24 +43,30 @@ pub struct IndividualState<G: PrimeGroupElement> {
 }
 
 /// Definition of a phase
-pub struct Phase<G: PrimeGroupElement, Phase> {
+pub struct Phases<G: PrimeGroupElement, Phase> {
     pub state: Box<IndividualState<G>>,
     pub phase: PhantomData<Phase>,
 }
 
-impl<G: PrimeGroupElement, P> Debug for Phase<G, P> {
+impl<G: PrimeGroupElement, P> Debug for Phases<G, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Phase").field("state", &self.state).finish()
     }
 }
 
-impl<G: PrimeGroupElement, P> PartialEq for Phase<G, P> {
+impl<G: PrimeGroupElement, P> PartialEq for Phases<G, P> {
     fn eq(&self, other: &Self) -> bool {
         self.state == other.state
     }
 }
 
 impl<G: PrimeGroupElement> Environment<G> {
+    /// Initialise the Distributed Key Generation environment. As input is given the `threshold`,
+    /// `nr_members` and the bytes used to generated the commitment key, `ck_gen_bytes`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `threshold` is greater to `nr_members` or smaller than `nr_members / 2`.
     pub fn init(threshold: usize, nr_members: usize, ck_gen_bytes: &[u8]) -> Self {
         assert!(threshold <= nr_members);
         assert!(threshold > nr_members / 2);
@@ -75,21 +81,44 @@ impl<G: PrimeGroupElement> Environment<G> {
     }
 }
 
-pub type DistributedKeyGeneration<G> = Phase<G, Initialise>;
+pub type DistributedKeyGeneration<G> = Phases<G, Initialise>;
 
+#[doc(hidden)]
 pub struct Initialise {}
+#[doc(hidden)]
 pub struct Phase1 {}
+#[doc(hidden)]
 pub struct Phase2 {}
+#[doc(hidden)]
 pub struct Phase3 {}
+#[doc(hidden)]
 pub struct Phase4 {}
+#[doc(hidden)]
 pub struct Phase5 {}
 
-impl<G: PrimeGroupElement> Phase<G, Initialise> {
+impl<G: PrimeGroupElement> Phases<G, Initialise> {
     /// Generate a new member state from random. This is round 1 of the protocol. Receives as
-    /// input the threshold `t`, the expected number of participants, `n`, common reference string
-    /// `crs`, `committee_pks`, and the party's index `my`. Initiates a Pedersen-VSS as a dealer,
-    /// and returns the committed coefficients of its polynomials, together with encryption of the
-    /// shares of the other different members.
+    /// input the `environment`, the initializer's private communication key, `secret_key`,
+    /// the participants public keys, `committee_pks`, and the initializer's index `my`.
+    /// Initiates a Pedersen-VSS as a dealer and returns the committed coefficients of its
+    /// polynomials, together with encryption of the shares of the other different members.
+    ///
+    /// In particular, the dealer, with `my = i`, generates two polynomials,
+    ///
+    /// \\( f_i(x) = \sum_{l = 0}^t a_{i, l} x^l \\) and \\( f_i'(x) = \sum_{l = 0}^t b_{i, l} x^l .\\)
+    ///
+    /// Then, it posts a commitment all of the polynomial coefficients. Specifically, it publishes
+    /// $E_{i,l} = g^{a_{i,l}}h^{b_{i,l}}$ for $l\in\lbrace0,\ldots, t\rbrace$. It then sends the shares of
+    /// its secret ($a_{i,0}$) to the other participants. To send a share to party $j$, it
+    /// evaluates both polynomials at those points, encrypts them under the recipient's public
+    /// key, and broadcasts the message. In particular, it first computes $s_{i,j} = f_i(j)$ and
+    /// $s_{i,j}' = f_i'(j)$, then encrypts them, $e_{i,j} = \texttt{Enc}(s_{i,j}, pk_j)$ and
+    /// $e_{i,j}' = \texttt{Enc}(s_{i,j}', pk_j)$, and broadcasts the values.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the number of participants public keys is not the same as
+    /// `nr_members` in the `environment`. It also fails if `my` is higher than `nr_members`.
     /// todo: this function could define the ordering of the public keys.
     pub fn init<R: RngCore + CryptoRng>(
         rng: &mut R,
@@ -97,7 +126,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         secret_key: &MemberCommunicationKey<G>,
         committee_pks: &[MemberCommunicationPublicKey<G>],
         my: usize,
-    ) -> (Phase<G, Phase1>, BroadcastPhase1<G>) {
+    ) -> (Phases<G, Phase1>, BroadcastPhase1<G>) {
         assert_eq!(committee_pks.len(), environment.nr_members);
         assert!(my <= environment.nr_members);
 
@@ -153,7 +182,7 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
         };
 
         (
-            Phase::<G, Phase1> {
+            Phases::<G, Phase1> {
                 state: Box::new(state),
                 phase: PhantomData,
             },
@@ -165,16 +194,33 @@ impl<G: PrimeGroupElement> Phase<G, Initialise> {
     }
 }
 
-impl<G: PrimeGroupElement> Phase<G, Phase1> {
-    /// Function to proceed to phase 2. It checks and keeps track of misbehaving parties. If this
-    /// step does not validate, the member is not allowed to proceed to phase 3.
+impl<G: PrimeGroupElement> Phases<G, Phase1> {
+    /// Function to proceed to phase 2. It takes as input the `environment`, and the fetched data
+    /// from phase 1, `members_state`, directed at the fetching party. It checks that the received
+    /// shares correspond with the
+    /// commitment of the corresponding polynomial. In particular, party $i$ fetches all committed
+    /// polynomials $E_{j,l}$, and its
+    /// corresponding encrypted shares $e_{j, i}, e_{i,j}'$, for $j\in\lbrace1,\ldots,n\rbrace$ and
+    /// $l\in\lbrace0,\ldots,t\rbrace$. It decrypts the shares, and verifies their correctness by evaluating
+    /// the polynomial in the exponent. In particular, it checks the following:
+    /// \\( g^{s_{j,i}}h^{s_{j,i}'} = \prod_{l=0}^t E_{j,l}^{i^l}. \\)
+    ///
+    /// If any of these check fails it broadcasts a proof of misbehaviour, and removes the
+    /// misbehaving party from the qualified set. If no misbehaviour happens, no data is broadcast.
+    ///
+    /// # Errors
+    ///
+    /// If this function is given as input a `MembersFetchedState1` which was not directed to
+    /// `self.state.index`, and error will be returned. Similarly, if decryption of any of
+    /// the shares fails, an error is returned. Finally, if there are more misbehaving parties
+    /// than the number allowed by the threshold, the phase transition fails.
     pub fn proceed<R>(
         mut self,
         environment: &Environment<G>,
         members_state: &[MembersFetchedState1<G>],
         rng: &mut R,
     ) -> (
-        Result<Phase<G, Phase2>, DkgError>,
+        Result<Phases<G, Phase2>, DkgError>,
         Option<BroadcastPhase2<G>>,
     )
     where
@@ -258,7 +304,7 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
         };
 
         (
-            Ok(Phase::<G, Phase2> {
+            Ok(Phases::<G, Phase2> {
                 state: self.state,
                 phase: PhantomData,
             }),
@@ -267,7 +313,7 @@ impl<G: PrimeGroupElement> Phase<G, Phase1> {
     }
 }
 
-impl<G: PrimeGroupElement> Phase<G, Phase2> {
+impl<G: PrimeGroupElement> Phases<G, Phase2> {
     fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
         for broadcast in broadcast_complaints {
             for misbehaving_parties in &broadcast.misbehaving_parties {
@@ -276,11 +322,22 @@ impl<G: PrimeGroupElement> Phase<G, Phase2> {
         }
     }
 
+    /// This function takes as input the broadcast complaints from the previous phase,
+    /// `broadcast_complaints`, and updates the qualified set. A single valid complaint
+    /// disqualifies a member. Then it publishes a commitment to the polynomial coefficients
+    /// $a_{i,l}$ without any randomness. In particular, each member $i$ broadcasts
+    /// $A_{i,l} = g^{a_{i,l}}$ for $l\in\lbrace 0,\ldots,l}$.
+    ///
+    /// Errors
+    ///
+    /// If there is less qualified members than the threshold, the function fails and does not
+    /// proceed to the following phase.
+    /// todo: we can probably compute here the final shares
     pub fn proceed(
         mut self,
         broadcast_complaints: &[BroadcastPhase2<G>],
     ) -> (
-        Result<Phase<G, Phase3>, DkgError>,
+        Result<Phases<G, Phase3>, DkgError>,
         Option<BroadcastPhase3<G>>,
     ) {
         self.compute_qualified_set(broadcast_complaints);
@@ -293,7 +350,7 @@ impl<G: PrimeGroupElement> Phase<G, Phase2> {
         });
 
         (
-            Ok(Phase::<G, Phase3> {
+            Ok(Phases::<G, Phase3> {
                 state: self.state,
                 phase: PhantomData,
             }),
@@ -302,12 +359,22 @@ impl<G: PrimeGroupElement> Phase<G, Phase2> {
     }
 }
 
-impl<G: PrimeGroupElement> Phase<G, Phase3> {
+impl<G: PrimeGroupElement> Phases<G, Phase3> {
+    /// Each participant fetches the commitment of the polynomials of the previous round, and
+    /// verifies that it corresponds with the polynomial committed initially. In particular player
+    /// $i$ checks that
+    /// \\(g^{s_{j,i}} = \prod_{l = 0}^tA_{j,l}^{i^l} \\). If the check fails it publishes a proof
+    /// of misbehaviour.
+    ///
+    /// Errors
+    ///
+    /// This function fails if the number of qualified members minus the misbehaving parties of
+    /// this round is smaller than the threshold.
     pub fn proceed(
         self,
         fetched_state_3: &[MembersFetchedState3<G>],
     ) -> (
-        Result<Phase<G, Phase4>, DkgError>,
+        Result<Phases<G, Phase4>, DkgError>,
         Option<BroadcastPhase4<G>>,
     ) {
         let mut honest = vec![0usize; self.state.environment.nr_members];
@@ -365,7 +432,7 @@ impl<G: PrimeGroupElement> Phase<G, Phase3> {
         // todo: set the reconstructable set
 
         (
-            Ok(Phase::<G, Phase4> {
+            Ok(Phases::<G, Phase4> {
                 state: self.state,
                 phase: PhantomData,
             }),
@@ -374,12 +441,22 @@ impl<G: PrimeGroupElement> Phase<G, Phase3> {
     }
 }
 
-impl<G: PrimeGroupElement> Phase<G, Phase4> {
+impl<G: PrimeGroupElement> Phases<G, Phase4> {
+    /// This functions takes as input the broadcast complaints of the previous phase. The
+    /// misbehaving parties are still part of the qualified set, and the master public key will
+    /// use their shares. However, they no longer participate in the protocol, and instead the
+    /// remaining parties reconstruct the shares. To do so, this function keeps track, in
+    /// `self.state.reconstructable_set` of all parties whose secret needs to be reconstructed.
+    ///
+    /// # Errors
+    ///
+    /// This function fails if the broadcast complaints accuse more parties than that allowed by
+    /// the threshold.
     pub fn proceed(
         mut self,
         broadcast_complaints: &[BroadcastPhase4<G>],
     ) -> (
-        Result<Phase<G, Phase5>, DkgError>,
+        Result<Phases<G, Phase5>, DkgError>,
         Option<BroadcastPhase5<G>>,
     ) {
         // todo: handle reconstrubtable set as `to_phse_4`
@@ -411,7 +488,7 @@ impl<G: PrimeGroupElement> Phase<G, Phase4> {
         }
 
         (
-            Ok(Phase::<G, Phase5> {
+            Ok(Phases::<G, Phase5> {
                 state: self.state,
                 phase: PhantomData,
             }),
