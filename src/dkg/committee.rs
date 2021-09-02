@@ -327,15 +327,16 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
 
     /// This function takes as input the broadcast complaints from the previous phase,
     /// `broadcast_complaints`, and updates the qualified set. A single valid complaint
-    /// disqualifies a member. Then it publishes a commitment to the polynomial coefficients
-    /// $a_{i,l}$ without any randomness. In particular, each member $i$ broadcasts
+    /// disqualifies a member. Using the qualified set, the member generates is final secret
+    /// share, and stores it, together with the public counterpart. Then it publishes a
+    /// commitment to the polynomial coefficients $a_{i,l}$ without any randomness.
+    /// In particular, each member $i$ broadcasts
     /// $A_{i,l} = g^{a_{i,l}}$ for $l\in\lbrace 0,\ldots,l}$.
     ///
     /// Errors
     ///
     /// If there is less qualified members than the threshold, the function fails and does not
     /// proceed to the following phase.
-    /// todo: we can probably compute here the final shares
     pub fn proceed(
         mut self,
         broadcast_complaints: &[BroadcastPhase2<G>],
@@ -450,8 +451,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
             return (Err(DkgError::MisbehaviourHigherThreshold), broadcast);
         }
 
-        // todo: set the reconstructable set
-
         (
             Ok(Phases::<G, Phase4> {
                 state: self.state,
@@ -482,7 +481,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
         Result<Phases<G, Phase5>, DkgError>,
         Option<BroadcastPhase5<G>>,
     ) {
-        // todo: handle reconstrubtable set as `to_phse_4`
         // misbehaving parties will have their shares disclosed to generate the master public key
         let mut reconstruct_shares: Vec<Option<MisbehavingPartiesState4<G>>> =
             vec![None; self.state.environment.nr_members];
@@ -544,7 +542,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
     pub fn finalise(
         self,
         broadcast_complaints: Option<&[MembersFetchedState5<G>]>,
-    ) -> Result<MasterPublicKey<G>, DkgError> {
+    ) -> Result<(MasterPublicKey<G>, MemberSecretShare<G>), DkgError> {
         let mut master_key = G::zero();
         // set of qualified without counting the misbehaving of the last round. We need this to
         // compute the lagrange interpolation of the misbehaving parties.
@@ -616,7 +614,12 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
             }
         }
 
-        Ok(MasterPublicKey(PublicKey { pk: master_key }))
+        Ok((
+            MasterPublicKey(PublicKey { pk: master_key }),
+            self.state
+                .final_share
+                .expect("At this point, we should have it."),
+        ))
     }
 }
 
@@ -1042,23 +1045,15 @@ mod tests {
 
         // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
         // parties. There is no misbehaving parties, so broadcast of phase 4 is None.
-
-        let unwraped_1_phase_4 = party_1_phase_4?;
-        let sk_1 = unwraped_1_phase_4.state.final_share.clone();
-        let unwraped_2_phase_4 = party_2_phase_4?;
-        let sk_2 = unwraped_2_phase_4.state.final_share.clone();
-        let unwraped_3_phase_4 = party_3_phase_4?;
-        let sk_3 = unwraped_3_phase_4.state.final_share.clone();
-
-        let (party_1_phase_5, _party_1_broadcast_data_5) = unwraped_1_phase_4.proceed(None);
-        let (party_2_phase_5, _party_2_broadcast_data_5) = unwraped_2_phase_4.proceed(None);
-        let (party_3_phase_5, _party_3_broadcast_data_5) = unwraped_3_phase_4.proceed(None);
+        let (party_1_phase_5, _party_1_broadcast_data_5) = party_1_phase_4?.proceed(None);
+        let (party_2_phase_5, _party_2_broadcast_data_5) = party_2_phase_4?.proceed(None);
+        let (party_3_phase_5, _party_3_broadcast_data_5) = party_3_phase_4?.proceed(None);
 
         // Finally, the different parties generate the master public key. No misbehaving parties, so
         // broadcast of phase 5 is None.
-        let mk_1 = party_1_phase_5?.finalise(None)?;
-        let mk_2 = party_2_phase_5?.finalise(None)?;
-        let mk_3 = party_3_phase_5?.finalise(None)?;
+        let (mk_1, sk_1) = party_1_phase_5?.finalise(None)?;
+        let (mk_2, sk_2) = party_2_phase_5?.finalise(None)?;
+        let (mk_3, sk_3) = party_3_phase_5?.finalise(None)?;
 
         if mk_1 != mk_2 || mk_2 != mk_3 {
             return Err(DkgError::InconsistentMasterKey);
@@ -1066,12 +1061,13 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
+        // todo: we need threshold + 1 honest memebers. Does this reflect correctly in the protocol?
         let indices = [
             Scalar::from_u64(1),
             Scalar::from_u64(2),
             Scalar::from_u64(3),
         ];
-        let evaluated_points = [sk_1.unwrap().0.sk, sk_2.unwrap().0.sk, sk_3.unwrap().0.sk];
+        let evaluated_points = [sk_1.0.sk, sk_2.0.sk, sk_3.0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
         let interpolated_mk = MasterPublicKey(PublicKey {

@@ -63,12 +63,12 @@
 //!     procedure_keys::MemberCommunicationKey,
 //! };
 //! use DKG::cryptography::commitment::CommitmentKey;
-//! use DKG::errors::DkgError;
+//! # use DKG::errors::DkgError;
 //! use rand_core::OsRng;
 //! use curve25519_dalek::ristretto::{RistrettoPoint};
+//! # use DKG::dkg::committee::{MembersFetchedState1, MembersFetchedState3};
 //!
-//! fn full_run() -> Result<(), DkgError> {
-//!         use DKG::dkg::committee::{MembersFetchedState1, MembersFetchedState3};
+//! # fn full_run() -> Result<(), DkgError> {
 //!         let mut rng = OsRng;
 //!
 //!         let shared_string = b"Example of a shared string.".to_owned();
@@ -192,14 +192,34 @@
 //!             },
 //!         ];
 //!
-//!         // We proceed to phase three (with no input because there was no misbehaving parties).
-//!         let (_party_1_phase_4, _party_1_broadcast_data_4) = party_1_phase_3?.proceed(&fetched_state_1_phase_3);
-//!         let (_party_2_phase_4, _party_2_broadcast_data_4) = party_2_phase_3?.proceed(&fetched_state_2_phase_3);
-//!         let (_party_3_phase_4, _party_3_broadcast_data_4) = party_3_phase_3?.proceed(&fetched_state_3_phase_3);
+//!         // We proceed to phase four with the fetched state of the previous phase.
+//!         let (party_1_phase_4, _party_1_broadcast_data_4) =
+//!             party_1_phase_3?.proceed(&fetched_state_1_phase_3);
+//!         let (party_2_phase_4, _party_2_broadcast_data_4) =
+//!             party_2_phase_3?.proceed(&fetched_state_2_phase_3);
+//!         let (party_3_phase_4, _party_3_broadcast_data_4) =
+//!             party_3_phase_3?.proceed(&fetched_state_3_phase_3);
 //!
-//!         Ok(())
-//!     }
-//! fn main() { assert!(full_run().is_ok()); }
+//!         // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
+//!         // parties. There is no misbehaving parties, so broadcast of phase 4 is None.
+//!         let (party_1_phase_5, _party_1_broadcast_data_5) = party_1_phase_4?.proceed(None);
+//!         let (party_2_phase_5, _party_2_broadcast_data_5) = party_2_phase_4?.proceed(None);
+//!         let (party_3_phase_5, _party_3_broadcast_data_5) = party_3_phase_4?.proceed(None);
+//!
+//!         // Finally, the different parties generate the master public key. No misbehaving parties, so
+//!         // broadcast of phase 5 is None. This outputs the master public key and the secret shares.
+//!         // All three mk_i are equal.
+//!         let (mk_1, sk_1) = party_1_phase_5?.finalise(None)?;
+//!         let (mk_2, sk_2) = party_2_phase_5?.finalise(None)?;
+//!         let (mk_3, sk_3) = party_3_phase_5?.finalise(None)?;
+//!
+//! #        if mk_1 != mk_2 || mk_2 != mk_3 {
+//! #            return Err(DkgError::InconsistentMasterKey);
+//! #        }
+//! #
+//! #        Ok(())
+//! #    }
+//! # fn main() { assert!(full_run().is_ok()); }
 //! ```
 //!
 //!
@@ -216,5 +236,5 @@ pub mod cryptography;
 pub mod dkg;
 pub mod errors;
 mod groups;
-mod polynomial;
+pub mod polynomial;
 mod traits;
