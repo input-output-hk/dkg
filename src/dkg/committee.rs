@@ -144,7 +144,7 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         let mut coeff_comms = Vec::with_capacity(environment.threshold + 1);
 
         for (ai, &bi) in pshek.get_coefficients().zip(pcomm.get_coefficients()) {
-            let apub = G::generator() * ai;
+            let apub = G::generator() * *ai;
             let coeff_comm = (environment.commitment_key.h * bi) + apub;
             apubs.push(apub);
             coeff_comms.push(coeff_comm);

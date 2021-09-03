@@ -91,8 +91,8 @@ impl<G: PrimeGroupElement> PublicKey<G> {
         randomness: &G::CorrespondingScalar,
     ) -> Ciphertext<G> {
         Ciphertext {
-            e1: G::generator() * randomness,
-            e2: (self.pk * randomness) + message,
+            e1: G::generator() * *randomness,
+            e2: (self.pk * *randomness) + *message,
         }
     }
 
@@ -102,7 +102,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
     where
         R: RngCore + CryptoRng,
     {
-        self.encrypt_point(&(G::generator() * message), rng)
+        self.encrypt_point(&(G::generator() * *message), rng)
     }
 
     /// Given a `message` represented as a `Scalar`, return a ciphertext and return
@@ -115,7 +115,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
     where
         R: RngCore + CryptoRng,
     {
-        self.encrypt_point_return_r(&(G::generator() * message), rng)
+        self.encrypt_point_return_r(&(G::generator() * *message), rng)
     }
 
     /// Given a `message` represented as a `Scalar`, and some value used as `randomness`,
@@ -127,7 +127,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
         message: &G::CorrespondingScalar,
         randomness: &G::CorrespondingScalar,
     ) -> Ciphertext<G> {
-        self.encrypt_point_with_r(&(G::generator() * message), randomness)
+        self.encrypt_point_with_r(&(G::generator() * *message), randomness)
     }
 
     /// Given a `message` passed as bytes, encrypt it using hybrid encryption.
@@ -274,8 +274,8 @@ impl<'a, 'b, G: PrimeGroupElement> Mul<&'b G::CorrespondingScalar> for &'a Ciphe
     type Output = Ciphertext<G>;
     fn mul(self, rhs: &'b G::CorrespondingScalar) -> Self::Output {
         Ciphertext {
-            e1: self.e1 * rhs,
-            e2: self.e2 * rhs,
+            e1: self.e1 * *rhs,
+            e2: self.e2 * *rhs,
         }
     }
 }

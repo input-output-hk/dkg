@@ -8,6 +8,127 @@
 //! group. For that, we leverage the implementation available in the
 //! [curve25519_dalek] crate.
 //!
+//! One can different point as follows
+//!
+//! # Examples
+//!
+//! ```rust
+//! use blake2::Digest;
+//! use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+//! use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+//! use curve25519_dalek::scalar::Scalar as RScalar;
+//! use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
+//! use derive_more::{Add, AddAssign, From, Mul, Neg, Sub};
+//! use generic_array::typenum::{U32, U64};
+//! use generic_array::GenericArray;
+//! use rand_core::{CryptoRng, RngCore};
+//! use DKG::traits::{PrimeGroupElement, Scalar};
+//!
+//! #[derive(Add, Sub, Neg, Mul, AddAssign, From, Clone, Copy, Debug, Eq, PartialEq)]
+//! #[mul(forward)]
+//! struct ScalarWrapper(RScalar);
+//!
+//! impl Scalar for ScalarWrapper {
+//!     type Item = ScalarWrapper;
+//!     type EncodingSize = U32;
+//!
+//!     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
+//!         Self(RScalar::random(rng))
+//!     }
+//!
+//!     fn from_u64(scalar: u64) -> Self {
+//!         ScalarWrapper(RScalar::from(scalar))
+//!     }
+//!
+//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
+//!         let mut array = GenericArray::default();
+//!         array.copy_from_slice(&self.to_bytes()[..]);
+//!         array
+//!     }
+//!
+//!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
+//!         if bytes.len() != 32 {
+//!             return None;
+//!         }
+//!         let mut bits = [0u8; 32];
+//!         bits.copy_from_slice(bytes);
+//!         Some(ScalarWrapper(RScalar::from_bits(bits)))
+//!     }
+//!
+//!     fn zero() -> Self {
+//!         Self(RScalar::zero())
+//!     }
+//!
+//!     fn one() -> Self {
+//!         Self(RScalar::one())
+//!     }
+//!
+//!     fn inverse(&self) -> Self {
+//!         Self(self.0.invert())
+//!     }
+//!
+//!     fn hash_to_scalar<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
+//!         Self(RScalar::hash_from_bytes::<H>(input))
+//!     }
+//! }
+//!
+//! #[derive(Add, Sub, Neg, Mul, AddAssign, From, Clone, Copy, Debug, Eq, PartialEq)]
+//! struct GroupElementWrapper(RistrettoPoint);
+//!
+//! impl std::ops::Mul<<GroupElementWrapper as PrimeGroupElement>::CorrespondingScalar>
+//! for GroupElementWrapper
+//! {
+//!     type Output = Self;
+//!
+//!     fn mul(
+//!         self,
+//!         rhs: <GroupElementWrapper as PrimeGroupElement>::CorrespondingScalar,
+//!     ) -> Self::Output {
+//!         Self(self.0.mul(rhs.0))
+//!     }
+//! }
+//!
+//! impl PrimeGroupElement for GroupElementWrapper {
+//!     type Item = GroupElementWrapper;
+//!     type CorrespondingScalar = ScalarWrapper;
+//!     type EncodingSize = U32;
+//!
+//!     fn generator() -> Self {
+//!         Self(RISTRETTO_BASEPOINT_POINT)
+//!     }
+//!
+//!     fn zero() -> Self {
+//!         GroupElementWrapper(RistrettoPoint::identity())
+//!     }
+//!
+//!     fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
+//!         GroupElementWrapper(RistrettoPoint::hash_from_bytes::<H>(input))
+//!     }
+//!
+//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
+//!         let mut array = GenericArray::default();
+//!         array.copy_from_slice(&self.0.compress().to_bytes()[..]);
+//!         array
+//!     }
+//!
+//!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
+//!         let compressed_point = CompressedRistretto::from_slice(bytes);
+//!         compressed_point.decompress().map(Self)
+//!     }
+//!
+//!     fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
+//!         where
+//!             I: IntoIterator<Item = Self::CorrespondingScalar>,
+//!             J: IntoIterator<Item = Self>,
+//!     {
+//!         Self(RistrettoPoint::vartime_multiscalar_mul(
+//!             scalars.into_iter().map(|s| s.0),
+//!             points.into_iter().map(|s| s.0),
+//!         ))
+//!     }
+//! }
+//! ```
+//!
 //! [ristretto]: https://ristretto.group/
 //! [curve25519_dalek]: https://doc.dalek.rs/curve25519_dalek/index.html
 
@@ -28,11 +149,6 @@ pub trait Scalar:
     + Sub<Self, Output = Self>
     + Mul<Self, Output = Self>
     + AddAssign<Self>
-    + for<'a> Add<&'a Self, Output = Self>
-    + for<'a> Sub<&'a Self, Output = Self>
-    + for<'a> Mul<&'a Self, Output = Self>
-    + core::iter::Sum<Self>
-    + for<'a> core::iter::Sum<&'a Self>
 {
     type Item;
     type EncodingSize: ArrayLength<u8>;
@@ -94,11 +210,6 @@ pub trait PrimeGroupElement:
     + Add<Self, Output = Self>
     + Sub<Self, Output = Self>
     + Mul<<Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
-    + for<'a> Add<&'a Self, Output = Self>
-    + for<'a> Sub<&'a Self, Output = Self>
-    + for<'a> Mul<&'a <Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
-    + core::iter::Sum<Self>
-    + for<'a> core::iter::Sum<&'a Self>
 {
     type Item;
     type CorrespondingScalar: Scalar;

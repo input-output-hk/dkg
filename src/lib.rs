@@ -237,4 +237,4 @@ pub mod dkg;
 pub mod errors;
 mod groups;
 pub mod polynomial;
-mod traits;
+pub mod traits;
