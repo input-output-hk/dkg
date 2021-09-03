@@ -106,13 +106,13 @@ impl<S: Scalar> std::ops::Add<Polynomial<S>> for Polynomial<S> {
         if self.degree() >= rhs.degree() {
             let mut x = self.elements;
             for (e, r) in x.iter_mut().zip(rhs.elements.iter()) {
-                *e = *e + *r;
+                *e += *r;
             }
             Self { elements: x }
         } else {
             let mut x = rhs.elements;
             for (e, r) in x.iter_mut().zip(self.elements.iter()) {
-                *e = *e + *r;
+                *e += *r;
             }
             Self { elements: x }
         }
