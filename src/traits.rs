@@ -8,6 +8,123 @@
 //! group. For that, we leverage the implementation available in the
 //! [curve25519_dalek] crate.
 //!
+//! One can different point as follows
+//!
+//! # Examples
+//!
+//! ```rust
+//! use DKG::traits::{PrimeGroupElement, Scalar};
+//! use blake2::Digest;
+//! use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+//! use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+//! use curve25519_dalek::scalar::Scalar as RScalar;
+//! use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
+//! use generic_array::typenum::{U32, U64};
+//! use generic_array::GenericArray;
+//! use rand_core::{CryptoRng, RngCore};
+//! use std::ops::Deref;
+//!
+//! struct ScalarWrapper(RScalar);
+//!
+//! impl Deref for ScalarWrapper {
+//!     type Target = RScalar;
+//!
+//!     fn deref(&self) -> &Self::Target{
+//!             &self.0
+//!     }
+//! }
+//!
+//! impl Scalar for ScalarWrapper {
+//!     type Item = ScalarWrapper;
+//!     type EncodingSize = U32;
+//!
+//!     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
+//!         ScalarWrapper::random(rng)
+//!     }
+//!
+//!     fn from_u64(scalar: u64) -> Self {
+//!         ScalarWrapper::from(scalar)
+//!     }
+//!
+//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
+//!         let mut array = GenericArray::default();
+//!         array.copy_from_slice(&self.to_bytes()[..]);
+//!         array
+//!     }
+//!
+//!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
+//!         if bytes.len() != 32 {
+//!             return None;
+//!         }
+//!         let mut bits = [0u8; 32];
+//!         bits.copy_from_slice(bytes);
+//!         Some(ScalarWrapper::from_bits(bits))
+//!     }
+//!
+//!     fn zero() -> Self {
+//!         ScalarWrapper::zero()
+//!     }
+//!
+//!     fn one() -> Self {
+//!         ScalarWrapper::one()
+//!     }
+//!
+//!     fn inverse(&self) -> Self {
+//!         self.invert()
+//!     }
+//!
+//!     fn hash_to_scalar<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
+//!         ScalarWrapper::hash_from_bytes::<H>(input)
+//!     }
+//! }
+//!
+//! struct GroupElementWrapper(RistrettoPoint);
+//!
+//! impl Deref for GroupElementWrapper {
+//!     type Target = RistrettoPoint;
+//!
+//!     fn deref(&self) -> &Self::Target {
+//!         &self.0
+//!     }
+//! }
+//! impl PrimeGroupElement for GroupElementWrapper {
+//!     type Item = GroupElementWrapper;
+//!     type CorrespondingScalar = RScalar;
+//!     type EncodingSize = U32;
+//!
+//!     fn generator() -> Self {
+//!         RISTRETTO_BASEPOINT_POINT
+//!     }
+//!
+//!     fn zero() -> Self {
+//!         GroupElementWrapper::identity()
+//!     }
+//!
+//!     fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
+//!         GroupElementWrapper::hash_from_bytes::<H>(input)
+//!     }
+//!
+//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
+//!         let mut array = GenericArray::default();
+//!         array.copy_from_slice(&self.compress().to_bytes()[..]);
+//!         array
+//!     }
+//!
+//!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
+//!         let compressed_point = CompressedRistretto::from_slice(bytes);
+//!         compressed_point.decompress()
+//!     }
+//!
+//!     fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
+//!     where
+//!         I: IntoIterator<Item = Self::CorrespondingScalar>,
+//!         J: IntoIterator<Item = Self>,
+//!     {
+//!         GroupElementWrapper::vartime_multiscalar_mul(scalars.into_iter(), points.into_iter())
+//!     }
+//! }
+//! ```
+//!
 //! [ristretto]: https://ristretto.group/
 //! [curve25519_dalek]: https://doc.dalek.rs/curve25519_dalek/index.html
 
