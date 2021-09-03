@@ -13,37 +13,31 @@
 //! # Examples
 //!
 //! ```rust
-//! use DKG::traits::{PrimeGroupElement, Scalar};
 //! use blake2::Digest;
 //! use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 //! use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 //! use curve25519_dalek::scalar::Scalar as RScalar;
 //! use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
+//! use derive_more::{Add, AddAssign, From, Mul, Neg, Sub};
 //! use generic_array::typenum::{U32, U64};
 //! use generic_array::GenericArray;
 //! use rand_core::{CryptoRng, RngCore};
-//! use std::ops::Deref;
+//! use DKG::traits::{PrimeGroupElement, Scalar};
 //!
+//! #[derive(Add, Sub, Neg, Mul, AddAssign, From, Clone, Copy, Debug, Eq, PartialEq)]
+//! #[mul(forward)]
 //! struct ScalarWrapper(RScalar);
-//!
-//! impl Deref for ScalarWrapper {
-//!     type Target = RScalar;
-//!
-//!     fn deref(&self) -> &Self::Target{
-//!             &self.0
-//!     }
-//! }
 //!
 //! impl Scalar for ScalarWrapper {
 //!     type Item = ScalarWrapper;
 //!     type EncodingSize = U32;
 //!
 //!     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
-//!         ScalarWrapper::random(rng)
+//!         Self(RScalar::random(rng))
 //!     }
 //!
 //!     fn from_u64(scalar: u64) -> Self {
-//!         ScalarWrapper::from(scalar)
+//!         ScalarWrapper(RScalar::from(scalar))
 //!     }
 //!
 //!     fn to_bytes(&self) -> GenericArray<u8, U32> {
@@ -58,69 +52,79 @@
 //!         }
 //!         let mut bits = [0u8; 32];
 //!         bits.copy_from_slice(bytes);
-//!         Some(ScalarWrapper::from_bits(bits))
+//!         Some(ScalarWrapper(RScalar::from_bits(bits)))
 //!     }
 //!
 //!     fn zero() -> Self {
-//!         ScalarWrapper::zero()
+//!         Self(RScalar::zero())
 //!     }
 //!
 //!     fn one() -> Self {
-//!         ScalarWrapper::one()
+//!         Self(RScalar::one())
 //!     }
 //!
 //!     fn inverse(&self) -> Self {
-//!         self.invert()
+//!         Self(self.0.invert())
 //!     }
 //!
 //!     fn hash_to_scalar<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
-//!         ScalarWrapper::hash_from_bytes::<H>(input)
+//!         Self(RScalar::hash_from_bytes::<H>(input))
 //!     }
 //! }
 //!
+//! #[derive(Add, Sub, Neg, Mul, AddAssign, From, Clone, Copy, Debug, Eq, PartialEq)]
 //! struct GroupElementWrapper(RistrettoPoint);
 //!
-//! impl Deref for GroupElementWrapper {
-//!     type Target = RistrettoPoint;
+//! impl std::ops::Mul<<GroupElementWrapper as PrimeGroupElement>::CorrespondingScalar>
+//! for GroupElementWrapper
+//! {
+//!     type Output = Self;
 //!
-//!     fn deref(&self) -> &Self::Target {
-//!         &self.0
+//!     fn mul(
+//!         self,
+//!         rhs: <GroupElementWrapper as PrimeGroupElement>::CorrespondingScalar,
+//!     ) -> Self::Output {
+//!         Self(self.0.mul(rhs.0))
 //!     }
 //! }
+//!
 //! impl PrimeGroupElement for GroupElementWrapper {
 //!     type Item = GroupElementWrapper;
-//!     type CorrespondingScalar = RScalar;
+//!     type CorrespondingScalar = ScalarWrapper;
 //!     type EncodingSize = U32;
 //!
 //!     fn generator() -> Self {
-//!         RISTRETTO_BASEPOINT_POINT
+//!         Self(RISTRETTO_BASEPOINT_POINT)
 //!     }
 //!
 //!     fn zero() -> Self {
-//!         GroupElementWrapper::identity()
+//!         GroupElementWrapper(RistrettoPoint::identity())
 //!     }
 //!
 //!     fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self {
-//!         GroupElementWrapper::hash_from_bytes::<H>(input)
+//!         GroupElementWrapper(RistrettoPoint::hash_from_bytes::<H>(input))
 //!     }
 //!
 //!     fn to_bytes(&self) -> GenericArray<u8, U32> {
 //!         let mut array = GenericArray::default();
-//!         array.copy_from_slice(&self.compress().to_bytes()[..]);
+//!         array.copy_from_slice(&self.0.compress().to_bytes()[..]);
 //!         array
 //!     }
 //!
 //!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
 //!         let compressed_point = CompressedRistretto::from_slice(bytes);
-//!         compressed_point.decompress()
+//!         compressed_point.decompress().map(Self)
 //!     }
 //!
 //!     fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
-//!     where
-//!         I: IntoIterator<Item = Self::CorrespondingScalar>,
-//!         J: IntoIterator<Item = Self>,
+//!         where
+//!             I: IntoIterator<Item = Self::CorrespondingScalar>,
+//!             J: IntoIterator<Item = Self>,
 //!     {
-//!         GroupElementWrapper::vartime_multiscalar_mul(scalars.into_iter(), points.into_iter())
+//!         Self(RistrettoPoint::vartime_multiscalar_mul(
+//!             scalars.into_iter().map(|s| s.0),
+//!             points.into_iter().map(|s| s.0),
+//!         ))
 //!     }
 //! }
 //! ```
