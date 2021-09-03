@@ -140,15 +140,15 @@ use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub trait Scalar:
-    Copy
-    + Clone
-    + Debug
-    + Eq
-    + Neg<Output = Self>
-    + Add<Self, Output = Self>
-    + Sub<Self, Output = Self>
-    + Mul<Self, Output = Self>
-    + AddAssign<Self>
+Copy
++ Clone
++ Debug
++ Eq
++ Neg<Output = Self>
++ Add<Self, Output = Self>
++ Sub<Self, Output = Self>
++ Mul<Self, Output = Self>
++ AddAssign<Self>
 {
     type Item;
     type EncodingSize: ArrayLength<u8>;
@@ -202,14 +202,14 @@ impl<S: Scalar> Iterator for ScalarExp<S> {
 }
 
 pub trait PrimeGroupElement:
-    Copy
-    + Clone
-    + Debug
-    + Eq
-    + Neg<Output = Self>
-    + Add<Self, Output = Self>
-    + Sub<Self, Output = Self>
-    + Mul<<Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
+Copy
++ Clone
++ Debug
++ Eq
++ Neg<Output = Self>
++ Add<Self, Output = Self>
++ Sub<Self, Output = Self>
++ Mul<<Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
 {
     type Item;
     type CorrespondingScalar: Scalar;
@@ -232,7 +232,7 @@ pub trait PrimeGroupElement:
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 
     fn vartime_multiscalar_multiplication<I, J>(scalars: I, points: J) -> Self
-    where
-        I: IntoIterator<Item = Self::CorrespondingScalar>,
-        J: IntoIterator<Item = Self>;
+        where
+            I: IntoIterator<Item = Self::CorrespondingScalar>,
+            J: IntoIterator<Item = Self>;
 }

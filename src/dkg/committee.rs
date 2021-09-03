@@ -67,10 +67,9 @@ impl<G: PrimeGroupElement> Environment<G> {
     ///
     /// # Panics
     ///
-    /// Panics if `threshold` is greater to `nr_members` or smaller than `nr_members / 2`.
+    /// Panics if `threshold` is greater or equal to `nr_members / 2`.
     pub fn init(threshold: usize, nr_members: usize, ck_gen_bytes: &[u8]) -> Self {
-        assert!(threshold <= nr_members);
-        assert!(threshold > nr_members / 2);
+        assert!(threshold < (nr_members + 1) / 2);
 
         let commitment_key = CommitmentKey::generate(ck_gen_bytes);
 
@@ -286,7 +285,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
             }
         }
 
-        if misbehaving_parties.len() >= environment.threshold {
+        if misbehaving_parties.len() > environment.threshold {
             return (
                 Err(DkgError::MisbehaviourHigherThreshold),
                 Some(BroadcastPhase2 {
@@ -345,7 +344,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
         Option<BroadcastPhase3<G>>,
     ) {
         self.compute_qualified_set(broadcast_complaints);
-        if self.state.qualified_set.len() < self.state.environment.threshold {
+        if self.state.qualified_set.len() < self.state.environment.threshold + 1 {
             return (Err(DkgError::MisbehaviourHigherThreshold), None);
         }
 
@@ -447,7 +446,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
             })
         };
 
-        if honest.iter().sum::<usize>() < self.state.environment.threshold {
+        if honest.iter().sum::<usize>() < self.state.environment.threshold + 1 {
             return (Err(DkgError::MisbehaviourHigherThreshold), broadcast);
         }
 
@@ -663,7 +662,7 @@ mod tests {
         let mut rng = OsRng;
 
         let shared_string = b"Example of a shared string.".to_owned();
-        let threshold = 2;
+        let threshold = 0;
         let nr_members = 2;
         let environment = Environment::init(threshold, nr_members, &shared_string);
 
@@ -697,7 +696,7 @@ mod tests {
         let mut rng = OsRng;
 
         let shared_string = b"Example of a shared string.".to_owned();
-        let threshold = 2;
+        let threshold = 1;
         let nr_members = 3;
         let environment = Environment::init(threshold, nr_members, &shared_string);
 
@@ -718,12 +717,12 @@ mod tests {
             MembersFetchedState1 {
                 sender_index: 2,
                 indexed_shares: broad_2.encrypted_shares[0].clone(),
-                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+                committed_coeffs: vec![PrimeGroupElement::zero(); threshold + 1],
             },
             MembersFetchedState1 {
                 sender_index: 3,
                 indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+                committed_coeffs: vec![PrimeGroupElement::zero(); threshold + 1],
             },
         ];
 
@@ -742,7 +741,7 @@ mod tests {
 
         let shared_string = b"Example of a shared string.".to_owned();
 
-        let threshold = 2;
+        let threshold = 1;
         let nr_members = 3;
         let environment = Environment::init(threshold, nr_members, &shared_string);
 
@@ -768,7 +767,7 @@ mod tests {
             MembersFetchedState1 {
                 sender_index: 3,
                 indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: vec![PrimeGroupElement::zero(); 3],
+                committed_coeffs: vec![PrimeGroupElement::zero(); threshold + 1],
             },
         ];
 
@@ -798,7 +797,7 @@ mod tests {
                 &fetched_state[1],
                 &environment.commitment_key,
                 2,
-                2
+                threshold
             )
             .is_ok());
 
@@ -814,7 +813,7 @@ mod tests {
 
         let shared_string = b"Example of a shared string.".to_owned();
 
-        let threshold = 2;
+        let threshold = 1;
         let nr_members = 3;
         let environment = Environment::init(threshold, nr_members, &shared_string);
 
@@ -906,7 +905,7 @@ mod tests {
 
         let shared_string = b"Example of a shared string.".to_owned();
 
-        let threshold = 2;
+        let threshold = 1;
         let nr_members = 3;
         let environment = Environment::init(threshold, nr_members, &shared_string);
 
@@ -1053,7 +1052,7 @@ mod tests {
         // broadcast of phase 5 is None.
         let (mk_1, sk_1) = party_1_phase_5?.finalise(None)?;
         let (mk_2, sk_2) = party_2_phase_5?.finalise(None)?;
-        let (mk_3, sk_3) = party_3_phase_5?.finalise(None)?;
+        let (mk_3, _sk_3) = party_3_phase_5?.finalise(None)?;
 
         if mk_1 != mk_2 || mk_2 != mk_3 {
             return Err(DkgError::InconsistentMasterKey);
@@ -1061,13 +1060,11 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
-        // todo: we need threshold + 1 honest memebers. Does this reflect correctly in the protocol?
         let indices = [
             Scalar::from_u64(1),
             Scalar::from_u64(2),
-            Scalar::from_u64(3),
         ];
-        let evaluated_points = [sk_1.0.sk, sk_2.0.sk, sk_3.0.sk];
+        let evaluated_points = [sk_1.0.sk, sk_2.0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
         let interpolated_mk = MasterPublicKey(PublicKey {

@@ -72,7 +72,7 @@
 //!         let mut rng = OsRng;
 //!
 //!         let shared_string = b"Example of a shared string.".to_owned();
-//!         let threshold = 2;
+//!         let threshold = 1;
 //!         let nr_members = 3;
 //!         let environment = Environment::init(threshold, nr_members, &shared_string);
 //!
