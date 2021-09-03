@@ -22,7 +22,7 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
 
     // Return a commitment with the given message, `m`,  and opening key, `r`
     fn commit_with_random(&self, m: &G::CorrespondingScalar, r: &G::CorrespondingScalar) -> G {
-        G::generator() * m + self.h * r
+        G::generator() * *m + self.h * *r
     }
 
     /// Return a commitment, and the used randomness, `r`, where the latter is computed

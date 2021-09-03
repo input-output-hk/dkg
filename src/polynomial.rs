@@ -66,7 +66,11 @@ impl<S: Scalar> Polynomial<S> {
 
     /// get the value of a polynomial a0 + a1 * x^1 + a2 * x^2 + .. + an * x^n for a value x=at
     pub fn evaluate(&self, at: &S) -> S {
-        S::sum(self.elements.iter().zip(at.exp_iter()).map(|(&e, x)| e * x))
+        self.elements
+            .iter()
+            .zip(at.exp_iter())
+            .map(|(&e, x)| e * x)
+            .fold(S::zero(), |a, b| a + b)
     }
 
     /// Evaluate the polynomial at x=0
@@ -102,13 +106,13 @@ impl<S: Scalar> std::ops::Add<Polynomial<S>> for Polynomial<S> {
         if self.degree() >= rhs.degree() {
             let mut x = self.elements;
             for (e, r) in x.iter_mut().zip(rhs.elements.iter()) {
-                *e = *e + r;
+                *e += *r;
             }
             Self { elements: x }
         } else {
             let mut x = rhs.elements;
             for (e, r) in x.iter_mut().zip(self.elements.iter()) {
-                *e = *e + r;
+                *e += *r;
             }
             Self { elements: x }
         }
