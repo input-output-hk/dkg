@@ -206,11 +206,11 @@ pub trait PrimeGroupElement:
     + Add<Self, Output = Self>
     + Sub<Self, Output = Self>
     + Mul<<Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
-    + for<'a> Add<&'a Self, Output = Self>
-    + for<'a> Sub<&'a Self, Output = Self>
-    + for<'a> Mul<&'a <Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
-    + core::iter::Sum<Self>
-    + for<'a> core::iter::Sum<&'a Self>
+// + for<'a> Add<&'a Self, Output = Self>
+// + for<'a> Sub<&'a Self, Output = Self>
+// + for<'a> Mul<&'a <Self as PrimeGroupElement>::CorrespondingScalar, Output = Self>
+// + core::iter::Sum<Self>
+// + for<'a> core::iter::Sum<&'a Self>
 {
     type Item;
     type CorrespondingScalar: Scalar;
