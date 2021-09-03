@@ -42,7 +42,7 @@ impl<G: PrimeGroupElement> Zkp<G> {
         let announcement_2 = *base_2 * w;
         let mut challenge_context = ChallengeContext::new(base_1, base_2, point_1, point_2);
         let challenge = challenge_context.first_challenge(&announcement_1, &announcement_2);
-        let response = challenge * dlog + w;
+        let response = challenge * *dlog + w;
 
         Zkp {
             challenge,

@@ -145,11 +145,6 @@ pub trait Scalar:
     + Sub<Self, Output = Self>
     + Mul<Self, Output = Self>
     + AddAssign<Self>
-    + for<'a> Add<&'a Self, Output = Self>
-    + for<'a> Sub<&'a Self, Output = Self>
-    + for<'a> Mul<&'a Self, Output = Self>
-    + core::iter::Sum<Self>
-    + for<'a> core::iter::Sum<&'a Self>
 {
     type Item;
     type EncodingSize: ArrayLength<u8>;
