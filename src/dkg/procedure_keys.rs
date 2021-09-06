@@ -69,12 +69,12 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
         Option<G::CorrespondingScalar>,
         Option<G::CorrespondingScalar>,
     ) {
-        let comm_scalar =
-            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.1));
-        let shek_scalar =
-            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.2));
+        let decrypted_share =
+            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.encrypted_share));
+        let decrypted_randomness =
+            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.encrypted_randomness));
 
-        (comm_scalar, shek_scalar)
+        (decrypted_share, decrypted_randomness)
     }
 }
 

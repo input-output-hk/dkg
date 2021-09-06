@@ -1,15 +1,15 @@
 #![allow(clippy::type_complexity)]
 
 use super::broadcast::{BroadcastPhase1, BroadcastPhase2};
-pub use super::broadcast::{IndexedDecryptedShares, IndexedEncryptedShares};
+pub use super::broadcast::{DecryptedShares, IndexedEncryptedShares};
 use super::procedure_keys::{
     MemberCommunicationKey, MemberCommunicationPublicKey, MemberPublicShare, MemberSecretShare,
 };
 use crate::cryptography::commitment::CommitmentKey;
 use crate::cryptography::elgamal::{PublicKey, SecretKey};
 use crate::dkg::broadcast::{
-    BroadcastPhase3, BroadcastPhase4, BroadcastPhase5, MisbehavingPartiesState1,
-    MisbehavingPartiesState3, MisbehavingPartiesState4, ProofOfMisbehaviour,
+    BroadcastPhase3, BroadcastPhase4, BroadcastPhase5, MisbehavingPartiesRound1,
+    MisbehavingPartiesRound3, MisbehavingPartiesRound4, ProofOfMisbehaviour,
 };
 use crate::dkg::procedure_keys::MasterPublicKey;
 use crate::errors::DkgError;
@@ -36,7 +36,7 @@ pub struct IndividualState<G: PrimeGroupElement> {
     final_share: Option<MemberSecretShare<G>>,
     public_share: Option<MemberPublicShare<G>>,
     master_public_key: Option<MemberPublicShare<G>>,
-    indexed_received_shares: Vec<Option<IndexedDecryptedShares<G>>>,
+    indexed_received_shares: Vec<Option<DecryptedShares<G>>>,
     indexed_committed_shares: Vec<Option<Vec<G>>>,
     /// Set of parties whose secret needs to be reconstructed
     reconstructable_set: Vec<usize>,
@@ -133,16 +133,16 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         // We initialise the vector of committed and decrypted shares, to which we include
         // the shares of the party initialising
         let mut committed_shares = vec![None; environment.nr_members];
-        let mut decrypted_shares: Vec<Option<IndexedDecryptedShares<G>>> =
+        let mut decrypted_shares: Vec<Option<DecryptedShares<G>>> =
             vec![None; environment.nr_members];
 
-        let pcomm = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
-        let pshek = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
+        let hiding_polynomial = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
+        let sharing_polynomial = Polynomial::<G::CorrespondingScalar>::random(rng, environment.threshold);
 
         let mut apubs = Vec::with_capacity(environment.threshold + 1);
         let mut coeff_comms = Vec::with_capacity(environment.threshold + 1);
 
-        for (ai, &bi) in pshek.get_coefficients().zip(pcomm.get_coefficients()) {
+        for (ai, &bi) in sharing_polynomial.get_coefficients().zip(hiding_polynomial.get_coefficients()) {
             let apub = G::generator() * *ai;
             let coeff_comm = (environment.commitment_key.h * bi) + apub;
             apubs.push(apub);
@@ -154,17 +154,17 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         #[allow(clippy::needless_range_loop)]
         for i in 0..environment.nr_members {
             let idx = <G::CorrespondingScalar as Scalar>::from_u64((i + 1) as u64);
-            let share_comm = pcomm.evaluate(&idx);
-            let share_shek = pshek.evaluate(&idx);
+            let randomness = hiding_polynomial.evaluate(&idx);
+            let share = sharing_polynomial.evaluate(&idx);
 
             let pk = &committee_pks[i];
 
-            let ecomm = pk.hybrid_encrypt(&share_comm.to_bytes(), rng);
-            let eshek = pk.hybrid_encrypt(&share_shek.to_bytes(), rng);
+            let encrypted_randomness = pk.hybrid_encrypt(&randomness.to_bytes(), rng);
+            let encrypted_share = pk.hybrid_encrypt(&share.to_bytes(), rng);
 
-            encrypted_shares.push((i + 1, ecomm, eshek));
+            encrypted_shares.push(IndexedEncryptedShares{ recipient_index: i + 1, encrypted_share, encrypted_randomness });
             if i == my - 1 {
-                decrypted_shares[my - 1] = Some((share_comm, share_shek, coeff_comms.clone()));
+                decrypted_shares[my - 1] = Some(DecryptedShares{ decrypted_share: share, decrypted_randomness: randomness, committed_coefficients: coeff_comms.clone()});
             }
         }
 
@@ -231,13 +231,13 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
         R: CryptoRng + RngCore,
     {
         let mut qualified_set = self.state.qualified_set.clone();
-        let mut misbehaving_parties: Vec<MisbehavingPartiesState1<G>> = Vec::new();
+        let mut misbehaving_parties: Vec<MisbehavingPartiesRound1<G>> = Vec::new();
         for fetched_data in members_state {
             if fetched_data.get_index() != self.state.index {
                 return (Err(DkgError::FetchedInvalidData), None);
             }
 
-            if let (Some(comm), Some(shek)) = self
+            if let (Some(decrypted_share), Some(decrypted_randomness)) = self
                 .state
                 .communication_sk
                 .decrypt_shares(fetched_data.indexed_shares.clone())
@@ -247,14 +247,14 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
                         .exp_iter()
                         .take(environment.threshold + 1);
 
-                let check_element = environment.commitment_key.h * comm + G::generator() * shek;
+                let check_element = environment.commitment_key.h * decrypted_randomness + G::generator() * decrypted_share;
                 let multi_scalar = G::vartime_multiscalar_multiplication(
                     index_pow,
                     fetched_data.committed_coeffs.clone(),
                 );
 
                 self.state.indexed_received_shares[fetched_data.sender_index - 1] =
-                    Some((comm, shek, fetched_data.committed_coeffs.clone()));
+                    Some(DecryptedShares{ decrypted_share, decrypted_randomness, committed_coefficients: fetched_data.committed_coeffs.clone()});
 
                 if check_element != multi_scalar {
                     let proof = ProofOfMisbehaviour::generate(
@@ -263,11 +263,11 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
                         rng,
                     );
                     qualified_set[fetched_data.sender_index - 1] = 0;
-                    misbehaving_parties.push((
-                        fetched_data.sender_index,
-                        DkgError::ShareValidityFailed,
-                        proof,
-                    ));
+                    misbehaving_parties.push(MisbehavingPartiesRound1 {
+                        accused_index: fetched_data.sender_index,
+                        accusation_error: DkgError::ShareValidityFailed,
+                        proof_accusation: proof,
+                    });
                 }
             } else {
                 // todo: handle the proofs. Might not be the most optimal way of handling these two
@@ -277,11 +277,11 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
                     rng,
                 );
                 qualified_set[fetched_data.sender_index - 1] = 0;
-                misbehaving_parties.push((
-                    fetched_data.sender_index,
-                    DkgError::ScalarOutOfBounds,
-                    proof,
-                ));
+                misbehaving_parties.push(MisbehavingPartiesRound1 {
+                    accused_index: fetched_data.sender_index,
+                    accusation_error: DkgError::ScalarOutOfBounds,
+                    proof_accusation: proof,
+                });
             }
         }
 
@@ -319,7 +319,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
     fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
         for broadcast in broadcast_complaints {
             for misbehaving_parties in &broadcast.misbehaving_parties {
-                self.state.qualified_set[misbehaving_parties.0 - 1] &= 0;
+                self.state.qualified_set[misbehaving_parties.accused_index - 1] &= 0;
             }
         }
     }
@@ -361,7 +361,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
                 secret_share += self.state.indexed_received_shares[i]
                     .as_ref()
                     .expect("Qualified member should have a share")
-                    .1;
+                    .decrypted_share;
             }
         }
 
@@ -401,7 +401,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
         let mut honest = vec![0usize; self.state.environment.nr_members];
         honest[self.state.index - 1] |= 1; /* self is considered honest */
         let received_shares = self.state.indexed_received_shares.clone();
-        let mut misbehaving_parties: Vec<MisbehavingPartiesState3<G>> = Vec::new();
+        let mut misbehaving_parties: Vec<MisbehavingPartiesRound3<G>> = Vec::new();
 
         for fetched_commitments in fetched_state_3 {
             // if the fetched commitment is from a disqualified player, we skip
@@ -419,18 +419,18 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
                     .clone()
                     .expect("If it is part of honest members, their shares should be recorded");
 
-                let check_element = G::generator() * indexed_shares.1;
+                let check_element = G::generator() * indexed_shares.decrypted_share;
                 let multi_scalar = G::vartime_multiscalar_multiplication(
                     index_pow,
                     fetched_commitments.committed_coefficients.clone(),
                 );
 
                 if check_element != multi_scalar {
-                    misbehaving_parties.push((
-                        fetched_commitments.sender_index,
-                        indexed_shares.0,
-                        indexed_shares.1,
-                    ));
+                    misbehaving_parties.push(MisbehavingPartiesRound3 {
+                        accused_index: fetched_commitments.sender_index,
+                        decrypted_share: indexed_shares.decrypted_share,
+                        decrypted_randomness: indexed_shares.decrypted_randomness
+                    });
                     continue;
                 }
 
@@ -481,7 +481,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
         Option<BroadcastPhase5<G>>,
     ) {
         // misbehaving parties will have their shares disclosed to generate the master public key
-        let mut reconstruct_shares: Vec<Option<MisbehavingPartiesState4<G>>> =
+        let mut reconstruct_shares: Vec<Option<MisbehavingPartiesRound4<G>>> =
             vec![None; self.state.environment.nr_members];
         let received_shares = self.state.indexed_received_shares.clone();
 
@@ -489,12 +489,12 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
             for fetched_complaints in complaints {
                 for state in &fetched_complaints.misbehaving_parties {
                     // If party is disqualified, we ignore it
-                    if self.state.qualified_set[state.0 - 1] != 0 {
-                        let indexed_shares = received_shares[state.0 - 1].as_ref().expect(
+                    if self.state.qualified_set[state.accused_index - 1] != 0 {
+                        let indexed_shares = received_shares[state.accused_index - 1].as_ref().expect(
                             "If it is part of honest members, their shares should be recorded",
                         );
-                        reconstruct_shares[state.0] = Some(indexed_shares.1);
-                        self.state.reconstructable_set[state.0 - 1] |= 1;
+                        reconstruct_shares[state.accused_index] = Some(indexed_shares.decrypted_share);
+                        self.state.reconstructable_set[state.accused_index - 1] |= 1;
                     }
                 }
             }
@@ -572,7 +572,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
                     received_shares[i]
                         .as_ref()
                         .expect("There should be a share for a qualified member")
-                        .1,
+                        .decrypted_share,
                 );
 
                 if let Some(complaint) = broadcast_complaints {
@@ -634,7 +634,7 @@ pub struct MembersFetchedState1<G: PrimeGroupElement> {
 
 impl<G: PrimeGroupElement> MembersFetchedState1<G> {
     fn get_index(&self) -> usize {
-        self.indexed_shares.0
+        self.indexed_shares.recipient_index
     }
 }
 
@@ -787,11 +787,11 @@ mod tests {
         assert_eq!(bd.misbehaving_parties.len(), 1);
 
         // Party 3 should fail
-        assert_eq!(bd.misbehaving_parties[0].0, 3);
-        assert_eq!(bd.misbehaving_parties[0].1, DkgError::ShareValidityFailed);
+        assert_eq!(bd.misbehaving_parties[0].accused_index, 3);
+        assert_eq!(bd.misbehaving_parties[0].accusation_error, DkgError::ShareValidityFailed);
         // and the complaint should be valid
         assert!(bd.misbehaving_parties[0]
-            .2
+            .proof_accusation
             .verify(
                 &mc1.to_public(),
                 &fetched_state[1],
@@ -1060,10 +1060,7 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
-        let indices = [
-            Scalar::from_u64(1),
-            Scalar::from_u64(2),
-        ];
+        let indices = [Scalar::from_u64(1), Scalar::from_u64(2)];
         let evaluated_points = [sk_1.0.sk, sk_2.0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);

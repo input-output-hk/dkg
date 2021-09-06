@@ -10,30 +10,50 @@ use crate::errors::DkgError;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
-/// Type that contains the index of the receiver, and its two encrypted
-/// shares.
-pub type IndexedEncryptedShares<G> = (usize, HybridCiphertext<G>, HybridCiphertext<G>);
+/// Struct that contains the index of the receiver, and its two encrypted
+/// shares. In particular, `encrypted_share`//( = \texttt{Enc}(f_i(\texttt{recipient_index}))//),
+/// while `encrypted_randomness`//( = \texttt{Enc}(f_i'(\texttt{recipient_index}))//).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IndexedEncryptedShares<G: PrimeGroupElement> {
+    pub recipient_index: usize,
+    pub encrypted_share: HybridCiphertext<G>,
+    pub encrypted_randomness: HybridCiphertext<G>
+}
 
-/// Type that contains the index of the receiver and its two decrypted
-/// shares, together with the corresponding blinding commitment.
-pub type IndexedDecryptedShares<G> = (
-    <G as PrimeGroupElement>::CorrespondingScalar,
-    <G as PrimeGroupElement>::CorrespondingScalar,
-    Vec<G>,
-);
+/// Struct that contains two decrypted shares, together with the blinding commitment
+/// of the coefficients of the associated polynomial.
+/// todo: ok not linking an index to the share? I think its fine, as this is handled locally
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DecryptedShares<G: PrimeGroupElement> {
+    pub decrypted_share: < G as PrimeGroupElement >::CorrespondingScalar,
+    pub decrypted_randomness: <G as PrimeGroupElement >::CorrespondingScalar,
+    pub committed_coefficients: Vec < G >,
+}
 
-/// Type that contains misbehaving parties detected in round 1. These
+/// Struct that contains misbehaving parties detected in round 1. These
 /// consist of the misbehaving member's index, the error which failed,
-/// and a proof of correctness of the misbehaviour claim.
-pub type MisbehavingPartiesState1<G> = (usize, DkgError, ProofOfMisbehaviour<G>);
+/// and a `ProofOfMisbehaviour`, which contains the invalid encrypted shares
+/// and a proof of correct decryption. A single valid
+/// complaint disqualifies the accused member.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MisbehavingPartiesRound1<G: PrimeGroupElement> {
+    pub(crate) accused_index: usize,
+    pub(crate) accusation_error: DkgError,
+    pub(crate) proof_accusation: ProofOfMisbehaviour<G>
+}
 
-pub type MisbehavingPartiesState3<G> = (
-    usize,
-    <G as PrimeGroupElement>::CorrespondingScalar,
-    <G as PrimeGroupElement>::CorrespondingScalar,
-);
+/// Struct that contains misbehaving parties detected in round 3. These consist of the misbehaving
+/// member's index, and the two decrypted shares which are used to validate misbehaviour.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MisbehavingPartiesRound3<G: PrimeGroupElement> {
+    pub(crate) accused_index: usize,
+    pub(crate) decrypted_share: <G as PrimeGroupElement>::CorrespondingScalar,
+    pub(crate) decrypted_randomness: <G as PrimeGroupElement>::CorrespondingScalar,
+}
 
-pub type MisbehavingPartiesState4<G> = <G as PrimeGroupElement>::CorrespondingScalar;
+/// If some party proves valid complaints against other qualified members, all other parties
+/// need to disclose the decrypted share of the accused party.
+pub type MisbehavingPartiesRound4<G> = <G as PrimeGroupElement>::CorrespondingScalar;
 
 pub struct BroadcastPhase1<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
@@ -41,7 +61,7 @@ pub struct BroadcastPhase1<G: PrimeGroupElement> {
 }
 
 pub struct BroadcastPhase2<G: PrimeGroupElement> {
-    pub misbehaving_parties: Vec<MisbehavingPartiesState1<G>>,
+    pub misbehaving_parties: Vec<MisbehavingPartiesRound1<G>>,
 }
 
 pub struct BroadcastPhase3<G: PrimeGroupElement> {
@@ -49,12 +69,12 @@ pub struct BroadcastPhase3<G: PrimeGroupElement> {
 }
 
 pub struct BroadcastPhase4<G: PrimeGroupElement> {
-    pub misbehaving_parties: Vec<MisbehavingPartiesState3<G>>,
+    pub misbehaving_parties: Vec<MisbehavingPartiesRound3<G>>,
 }
 
 #[derive(Clone)]
 pub struct BroadcastPhase5<G: PrimeGroupElement> {
-    pub misbehaving_parties: Vec<Option<MisbehavingPartiesState4<G>>>,
+    pub misbehaving_parties: Vec<Option<MisbehavingPartiesRound4<G>>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -75,18 +95,18 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
     where
         R: CryptoRng + RngCore,
     {
-        let symm_key_1 = secret_key.0.recover_symmetric_key(&encrypted_shares.1);
-        let symm_key_2 = secret_key.0.recover_symmetric_key(&encrypted_shares.2);
+        let symm_key_1 = secret_key.0.recover_symmetric_key(&encrypted_shares.encrypted_share);
+        let symm_key_2 = secret_key.0.recover_symmetric_key(&encrypted_shares.encrypted_randomness);
 
         let proof_decryption_1 = CorrectHybridDecrKeyZkp::generate(
-            &encrypted_shares.1,
+            &encrypted_shares.encrypted_share,
             &secret_key.to_public(),
             &symm_key_1,
             secret_key,
             rng,
         );
         let proof_decryption_2 = CorrectHybridDecrKeyZkp::generate(
-            &encrypted_shares.2,
+            &encrypted_shares.encrypted_randomness,
             &secret_key.to_public(),
             &symm_key_2,
             secret_key,
@@ -114,7 +134,7 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         let proof1_is_err = self
             .proof_decryption_1
             .verify(
-                &fetched_data.indexed_shares.1,
+                &fetched_data.indexed_shares.encrypted_share,
                 &self.symm_key_1,
                 complaining_pk,
             )
@@ -123,7 +143,7 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         let proof2_is_err = self
             .proof_decryption_2
             .verify(
-                &fetched_data.indexed_shares.2,
+                &fetched_data.indexed_shares.encrypted_randomness,
                 &self.symm_key_2,
                 complaining_pk,
             )
@@ -134,12 +154,12 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         }
 
         let plaintext_1 = <G::CorrespondingScalar as Scalar>::from_bytes(
-            &self.symm_key_1.process(&self.encrypted_shares.1.e2),
+            &self.symm_key_1.process(&self.encrypted_shares.encrypted_share.e2),
         )
         .ok_or(DkgError::DecodingToScalarFailed)?;
 
         let plaintext_2 = <G::CorrespondingScalar as Scalar>::from_bytes(
-            &self.symm_key_2.process(&self.encrypted_shares.2.e2),
+            &self.symm_key_2.process(&self.encrypted_shares.encrypted_randomness.e2),
         )
         .ok_or(DkgError::DecodingToScalarFailed)?;
 
