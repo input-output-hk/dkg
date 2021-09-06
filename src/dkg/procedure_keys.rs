@@ -1,6 +1,6 @@
 /// todo: eventually https://internals.rust-lang.org/t/pre-rfc-module-level-generics/12015
 use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
-use crate::dkg::committee::IndexedEncryptedShares;
+use crate::dkg::committee::EncryptedShares;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 
@@ -64,15 +64,17 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
 
     pub(crate) fn decrypt_shares(
         &self,
-        shares: IndexedEncryptedShares<G>,
+        shares: EncryptedShares<G>,
     ) -> (
         Option<G::CorrespondingScalar>,
         Option<G::CorrespondingScalar>,
     ) {
-        let decrypted_share =
-            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.encrypted_share));
-        let decrypted_randomness =
-            <G::CorrespondingScalar as Scalar>::from_bytes(&self.hybrid_decrypt(&shares.encrypted_randomness));
+        let decrypted_share = <G::CorrespondingScalar as Scalar>::from_bytes(
+            &self.hybrid_decrypt(&shares.encrypted_share),
+        );
+        let decrypted_randomness = <G::CorrespondingScalar as Scalar>::from_bytes(
+            &self.hybrid_decrypt(&shares.encrypted_randomness),
+        );
 
         (decrypted_share, decrypted_randomness)
     }

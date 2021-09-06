@@ -44,6 +44,20 @@ pub enum DkgError {
     /// state
     #[cfg_attr(feature = "std", error("Inconsistent master key generation"))]
     InconsistentMasterKey,
+    /// This error occurs when a claim of misbehaviour does not validate due to a supposed
+    /// match which does not hold.
+    #[cfg_attr(
+        feature = "std",
+        error("Complaint verification failed. False claimed equality.")
+    )]
+    FalseClaimedEquality,
+    /// This error occurs when a claim of misbehaviour does not validate due to a supposed
+    /// inequality which does not hold.
+    #[cfg_attr(
+        feature = "std",
+        error("Complaint verification failed. False claimed inequality")
+    )]
+    FalseClaimedInequality,
 }
 
 impl From<ProofError> for DkgError {

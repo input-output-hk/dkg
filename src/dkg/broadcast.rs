@@ -1,10 +1,9 @@
 //! Structures related to the broadcast messages
 use crate::cryptography::elgamal::SymmetricKey;
 use crate::cryptography::{
-    commitment::CommitmentKey, correct_hybrid_decryption_key::CorrectHybridDecrKeyZkp,
-    elgamal::HybridCiphertext,
+    correct_hybrid_decryption_key::CorrectHybridDecrKeyZkp, elgamal::HybridCiphertext,
 };
-use crate::dkg::committee::MembersFetchedState1;
+use crate::dkg::committee::Environment;
 use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
 use crate::errors::DkgError;
 use crate::traits::{PrimeGroupElement, Scalar};
@@ -14,10 +13,10 @@ use rand_core::{CryptoRng, RngCore};
 /// shares. In particular, `encrypted_share`//( = \texttt{Enc}(f_i(\texttt{recipient_index}))//),
 /// while `encrypted_randomness`//( = \texttt{Enc}(f_i'(\texttt{recipient_index}))//).
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct IndexedEncryptedShares<G: PrimeGroupElement> {
+pub struct EncryptedShares<G: PrimeGroupElement> {
     pub recipient_index: usize,
     pub encrypted_share: HybridCiphertext<G>,
-    pub encrypted_randomness: HybridCiphertext<G>
+    pub encrypted_randomness: HybridCiphertext<G>,
 }
 
 /// Struct that contains two decrypted shares, together with the blinding commitment
@@ -25,9 +24,9 @@ pub struct IndexedEncryptedShares<G: PrimeGroupElement> {
 /// todo: ok not linking an index to the share? I think its fine, as this is handled locally
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecryptedShares<G: PrimeGroupElement> {
-    pub decrypted_share: < G as PrimeGroupElement >::CorrespondingScalar,
-    pub decrypted_randomness: <G as PrimeGroupElement >::CorrespondingScalar,
-    pub committed_coefficients: Vec < G >,
+    pub decrypted_share: <G as PrimeGroupElement>::CorrespondingScalar,
+    pub decrypted_randomness: <G as PrimeGroupElement>::CorrespondingScalar,
+    pub committed_coefficients: Vec<G>,
 }
 
 /// Struct that contains misbehaving parties detected in round 1. These
@@ -39,7 +38,60 @@ pub struct DecryptedShares<G: PrimeGroupElement> {
 pub struct MisbehavingPartiesRound1<G: PrimeGroupElement> {
     pub(crate) accused_index: usize,
     pub(crate) accusation_error: DkgError,
-    pub(crate) proof_accusation: ProofOfMisbehaviour<G>
+    pub(crate) proof_accusation: ProofOfMisbehaviour<G>,
+}
+
+impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
+    /// Function to validate that a complaint against a given participant is valid. To validate
+    /// a complaint from phase one, the verifier needs to check that the decrypted shares
+    /// in `proof_accusation` are indeed the decryption of the encrypted indices sent by party
+    /// `accused_index` to party `accuser_index`. Then it verifies that the decrypted shares
+    /// do not correspond to the evaluation of the committed polynomial at value `accuser_index`.
+    pub fn verify(
+        &self,
+        environment: &Environment<G>,
+        accuser_index: usize,
+        accuser_pk: &MemberCommunicationPublicKey<G>,
+        encrypted_shares: &EncryptedShares<G>,
+        committed_coefficients: Vec<G>,
+    ) -> Result<(), DkgError> {
+        // First we verify the proof
+        self.proof_accusation.verify(
+            environment,
+            accuser_pk,
+            encrypted_shares,
+            committed_coefficients.clone(),
+            accuser_index,
+        )?;
+
+        let randomness = <G::CorrespondingScalar as Scalar>::from_bytes(
+            &self
+                .proof_accusation
+                .randomness_key
+                .process(&encrypted_shares.encrypted_randomness.e2),
+        )
+        .ok_or(DkgError::ScalarOutOfBounds)?;
+        let share = <G::CorrespondingScalar as Scalar>::from_bytes(
+            &self
+                .proof_accusation
+                .share_key
+                .process(&encrypted_shares.encrypted_share.e2),
+        )
+        .ok_or(DkgError::ScalarOutOfBounds)?;
+
+        let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
+            .exp_iter()
+            .take(environment.threshold + 1);
+
+        let check_element = environment.commitment_key.h * randomness + G::generator() * share;
+        let multi_scalar = G::vartime_multiscalar_multiplication(index_pow, committed_coefficients);
+
+        if check_element == multi_scalar {
+            return Err(DkgError::FalseClaimedInequality);
+        }
+
+        Ok(())
+    }
 }
 
 /// Struct that contains misbehaving parties detected in round 3. These consist of the misbehaving
@@ -51,13 +103,47 @@ pub struct MisbehavingPartiesRound3<G: PrimeGroupElement> {
     pub(crate) decrypted_randomness: <G as PrimeGroupElement>::CorrespondingScalar,
 }
 
+impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
+    pub fn verify(
+        &self,
+        environment: &Environment<G>,
+        accuser_index: usize,
+        randomised_committed_coefficients: Vec<G>,
+        committed_coefficients: Vec<G>,
+    ) -> Result<(), DkgError> {
+        let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
+            .exp_iter()
+            .take(environment.threshold + 1);
+
+        let failing_check = G::generator() * self.decrypted_share;
+        let failing_multi_scalar =
+            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients);
+
+        let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
+            .exp_iter()
+            .take(environment.threshold + 1);
+        let passing_check = G::generator() * self.decrypted_share
+            + environment.commitment_key.h * self.decrypted_randomness;
+        let passing_multi_scalar =
+            G::vartime_multiscalar_multiplication(index_pow, randomised_committed_coefficients);
+
+        // todo: invalid complaints should be interpreted as misbehaviour from qualified members?
+        if passing_check != passing_multi_scalar {
+            return Err(DkgError::FalseClaimedEquality);
+        } else if failing_check == failing_multi_scalar {
+            return Err(DkgError::FalseClaimedInequality);
+        }
+        Ok(())
+    }
+}
+
 /// If some party proves valid complaints against other qualified members, all other parties
 /// need to disclose the decrypted share of the accused party.
 pub type MisbehavingPartiesRound4<G> = <G as PrimeGroupElement>::CorrespondingScalar;
 
 pub struct BroadcastPhase1<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
-    pub encrypted_shares: Vec<IndexedEncryptedShares<G>>,
+    pub encrypted_shares: Vec<EncryptedShares<G>>,
 }
 
 pub struct BroadcastPhase2<G: PrimeGroupElement> {
@@ -79,24 +165,27 @@ pub struct BroadcastPhase5<G: PrimeGroupElement> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProofOfMisbehaviour<G: PrimeGroupElement> {
-    symm_key_1: SymmetricKey<G>,
-    symm_key_2: SymmetricKey<G>,
-    encrypted_shares: IndexedEncryptedShares<G>,
+    share_key: SymmetricKey<G>,
+    randomness_key: SymmetricKey<G>,
     proof_decryption_1: CorrectHybridDecrKeyZkp<G>,
     proof_decryption_2: CorrectHybridDecrKeyZkp<G>,
 }
 
 impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
     pub(crate) fn generate<R>(
-        encrypted_shares: &IndexedEncryptedShares<G>,
+        encrypted_shares: &EncryptedShares<G>,
         secret_key: &MemberCommunicationKey<G>,
         rng: &mut R,
     ) -> Self
     where
         R: CryptoRng + RngCore,
     {
-        let symm_key_1 = secret_key.0.recover_symmetric_key(&encrypted_shares.encrypted_share);
-        let symm_key_2 = secret_key.0.recover_symmetric_key(&encrypted_shares.encrypted_randomness);
+        let symm_key_1 = secret_key
+            .0
+            .recover_symmetric_key(&encrypted_shares.encrypted_share);
+        let symm_key_2 = secret_key
+            .0
+            .recover_symmetric_key(&encrypted_shares.encrypted_randomness);
 
         let proof_decryption_1 = CorrectHybridDecrKeyZkp::generate(
             &encrypted_shares.encrypted_share,
@@ -114,28 +203,26 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         );
 
         Self {
-            symm_key_1,
-            symm_key_2,
-            encrypted_shares: encrypted_shares.clone(),
+            share_key: symm_key_1,
+            randomness_key: symm_key_2,
             proof_decryption_1,
             proof_decryption_2,
         }
     }
 
-    // todo: we probably want to make the verifier input the Hybrid ctxt.
     pub fn verify(
         &self,
+        environment: &Environment<G>,
         complaining_pk: &MemberCommunicationPublicKey<G>,
-        fetched_data: &MembersFetchedState1<G>,
-        commitment_key: &CommitmentKey<G>,
-        plaintiff_index: usize,
-        threshold: usize,
+        encrypted_shares: &EncryptedShares<G>,
+        committed_coeffs: Vec<G>,
+        accuser_index: usize,
     ) -> Result<(), DkgError> {
         let proof1_is_err = self
             .proof_decryption_1
             .verify(
-                &fetched_data.indexed_shares.encrypted_share,
-                &self.symm_key_1,
+                &encrypted_shares.encrypted_share,
+                &self.share_key,
                 complaining_pk,
             )
             .is_err();
@@ -143,8 +230,8 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         let proof2_is_err = self
             .proof_decryption_2
             .verify(
-                &fetched_data.indexed_shares.encrypted_randomness,
-                &self.symm_key_2,
+                &encrypted_shares.encrypted_randomness,
+                &self.randomness_key,
                 complaining_pk,
             )
             .is_err();
@@ -154,22 +241,24 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         }
 
         let plaintext_1 = <G::CorrespondingScalar as Scalar>::from_bytes(
-            &self.symm_key_1.process(&self.encrypted_shares.encrypted_share.e2),
+            &self.share_key.process(&encrypted_shares.encrypted_share.e2),
         )
         .ok_or(DkgError::DecodingToScalarFailed)?;
 
         let plaintext_2 = <G::CorrespondingScalar as Scalar>::from_bytes(
-            &self.symm_key_2.process(&self.encrypted_shares.encrypted_randomness.e2),
+            &self
+                .randomness_key
+                .process(&encrypted_shares.encrypted_randomness.e2),
         )
         .ok_or(DkgError::DecodingToScalarFailed)?;
 
-        let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(plaintiff_index as u64)
+        let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
-            .take(threshold + 1);
+            .take(environment.threshold + 1);
 
-        let check_element = commitment_key.h * plaintext_1 + G::generator() * plaintext_2;
-        let multi_scalar =
-            G::vartime_multiscalar_multiplication(index_pow, fetched_data.clone().committed_coeffs);
+        let check_element =
+            environment.commitment_key.h * plaintext_1 + G::generator() * plaintext_2;
+        let multi_scalar = G::vartime_multiscalar_multiplication(index_pow, committed_coeffs);
 
         if check_element != multi_scalar {
             return Ok(());
