@@ -58,6 +58,13 @@ pub enum DkgError {
         error("Complaint verification failed. False claimed inequality")
     )]
     FalseClaimedInequality,
+    /// This error occurs when a member included in the qualified set should have been
+    /// dismissed earlier
+    #[cfg_attr(
+        feature = "std",
+        error("User included in the qualified set should be dismissed")
+    )]
+    PartyShouldBeDisqualified,
 }
 
 impl From<ProofError> for DkgError {

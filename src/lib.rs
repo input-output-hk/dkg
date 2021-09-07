@@ -202,9 +202,9 @@
 //!
 //!         // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
 //!         // parties. There is no misbehaving parties, so broadcast of phase 4 is None.
-//!         let (party_1_phase_5, _party_1_broadcast_data_5) = party_1_phase_4?.proceed(None);
-//!         let (party_2_phase_5, _party_2_broadcast_data_5) = party_2_phase_4?.proceed(None);
-//!         let (party_3_phase_5, _party_3_broadcast_data_5) = party_3_phase_4?.proceed(None);
+//!         let (party_1_phase_5, _party_1_broadcast_data_5) = party_1_phase_4?.proceed(&[]);
+//!         let (party_2_phase_5, _party_2_broadcast_data_5) = party_2_phase_4?.proceed(&[]);
+//!         let (party_3_phase_5, _party_3_broadcast_data_5) = party_3_phase_4?.proceed(&[]);
 //!
 //!         // Finally, the different parties generate the master public key. No misbehaving parties, so
 //!         // broadcast of phase 5 is None. This outputs the master public key and the secret shares.

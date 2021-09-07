@@ -52,30 +52,31 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
         environment: &Environment<G>,
         accuser_index: usize,
         accuser_pk: &MemberCommunicationPublicKey<G>,
-        encrypted_shares: &EncryptedShares<G>,
-        committed_coefficients: Vec<G>,
+        accused_broadcast: &BroadcastPhase1<G>,
     ) -> Result<(), DkgError> {
+        let respective_shares = accused_broadcast.encrypted_shares[accuser_index - 1].clone();
         // First we verify the proof
         self.proof_accusation.verify(
             environment,
             accuser_pk,
-            encrypted_shares,
-            committed_coefficients.clone(),
+            &respective_shares,
+            accused_broadcast.committed_coefficients.clone(),
             accuser_index,
         )?;
 
+        // Now we check equality does not hold.
         let randomness = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self
                 .proof_accusation
                 .randomness_key
-                .process(&encrypted_shares.encrypted_randomness.e2),
+                .process(&respective_shares.encrypted_randomness.e2),
         )
         .ok_or(DkgError::ScalarOutOfBounds)?;
         let share = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self
                 .proof_accusation
                 .share_key
-                .process(&encrypted_shares.encrypted_share.e2),
+                .process(&respective_shares.encrypted_share.e2),
         )
         .ok_or(DkgError::ScalarOutOfBounds)?;
 
@@ -84,7 +85,10 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
             .take(environment.threshold + 1);
 
         let check_element = environment.commitment_key.h * randomness + G::generator() * share;
-        let multi_scalar = G::vartime_multiscalar_multiplication(index_pow, committed_coefficients);
+        let multi_scalar = G::vartime_multiscalar_multiplication(
+            index_pow,
+            accused_broadcast.committed_coefficients.clone(),
+        );
 
         if check_element == multi_scalar {
             return Err(DkgError::FalseClaimedInequality);
@@ -108,8 +112,8 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
         &self,
         environment: &Environment<G>,
         accuser_index: usize,
-        randomised_committed_coefficients: Vec<G>,
-        committed_coefficients: Vec<G>,
+        randomised_committed_coefficients: &Vec<G>,
+        committed_coefficients: &Vec<G>,
     ) -> Result<(), DkgError> {
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
@@ -117,15 +121,17 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
 
         let failing_check = G::generator() * self.decrypted_share;
         let failing_multi_scalar =
-            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients);
+            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients.clone());
 
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
             .take(environment.threshold + 1);
         let passing_check = G::generator() * self.decrypted_share
             + environment.commitment_key.h * self.decrypted_randomness;
-        let passing_multi_scalar =
-            G::vartime_multiscalar_multiplication(index_pow, randomised_committed_coefficients);
+        let passing_multi_scalar = G::vartime_multiscalar_multiplication(
+            index_pow,
+            randomised_committed_coefficients.clone(),
+        );
 
         // todo: invalid complaints should be interpreted as misbehaviour from qualified members?
         if passing_check != passing_multi_scalar {
@@ -141,19 +147,27 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
 /// need to disclose the decrypted share of the accused party.
 pub type MisbehavingPartiesRound4<G> = <G as PrimeGroupElement>::CorrespondingScalar;
 
+/// Structure representing the broadcast messages of `Phase1`. The `committed_coefficients` are
+/// randomised commitments of the parties VSS polynomials. `encrypted_shares` is a vector
+/// of size `n` (where `n` is the number of parties), (todo: we want to check this as well somewhere)
+/// where `encrypted_share[i]` represents the encrypted shares of party `i`.  
+#[derive(Clone)]
 pub struct BroadcastPhase1<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
     pub encrypted_shares: Vec<EncryptedShares<G>>,
 }
 
+#[derive(Clone)]
 pub struct BroadcastPhase2<G: PrimeGroupElement> {
     pub misbehaving_parties: Vec<MisbehavingPartiesRound1<G>>,
 }
 
+#[derive(Clone)]
 pub struct BroadcastPhase3<G: PrimeGroupElement> {
     pub committed_coefficients: Vec<G>,
 }
 
+#[derive(Clone)]
 pub struct BroadcastPhase4<G: PrimeGroupElement> {
     pub misbehaving_parties: Vec<MisbehavingPartiesRound3<G>>,
 }
