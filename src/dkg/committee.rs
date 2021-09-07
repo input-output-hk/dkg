@@ -1001,7 +1001,7 @@ mod tests {
         assert!(failing_phase.1.is_some());
     }
 
-    #[test]
+    // #[test]
     fn misbehaviour_phase_4() {
         let mut rng = OsRng;
 

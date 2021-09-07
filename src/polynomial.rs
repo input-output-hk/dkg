@@ -56,7 +56,7 @@ impl<S: Scalar> Polynomial<S> {
     }
 
     /// generate a new polynomial of specific degree
-    pub fn random<R: RngCore + CryptoRng>(rng: &mut R, degree: usize) -> Polynomial<S> {
+    pub fn random<R: RngCore + CryptoRng>(rng: &mut R, degree: usize) -> Self {
         Polynomial {
             elements: std::iter::repeat_with(|| S::random(rng))
                 .take(degree + 1)
@@ -84,6 +84,29 @@ impl<S: Scalar> Polynomial<S> {
 
     pub fn get_coefficients(&self) -> std::slice::Iter<'_, S> {
         self.elements.iter()
+    }
+
+    /// Given indices //(x_1, \ldots, x_n//), and evaluated points //(y_1, \ldots, y_n//), one can
+    /// compute a polynomial of degree //(n - 1//) by computing the following:
+    /// //(P(x) = \sum_{i=1}^n y_i\prod_{k=1, k\neq i}^n\frac{x - x_k}{x_j - x_k}.//)
+    pub fn interpolate(degree: usize, evaluated_points: &[S], indices: &[S]) -> Self {
+        assert_eq!(degree + 1, evaluated_points.len());
+        assert_eq!(degree + 1, indices.len());
+        let mut polynomial = Self::from_vec(vec![S::zero()]);
+
+        for i in 0..degree + 1 {
+            let mut tem_polynomial = Self::from_vec(vec![evaluated_points[i]]);
+            for j in 0..degree + 1 {
+                if i == j {
+                    continue;
+                }
+                tem_polynomial =
+                    tem_polynomial * Self::from_vec(vec![(indices[i] - indices[j]).inverse()]);
+                tem_polynomial = tem_polynomial * Self::from_vec(vec![-indices[j], S::one()]);
+            }
+            polynomial = polynomial + tem_polynomial;
+        }
+        polynomial
     }
 }
 
@@ -186,6 +209,34 @@ mod tests {
 
         assert_eq!(interpolated_zero, expected_zero);
     }
+
+    #[test]
+    fn lagrange_coefficients() {
+        let polynomial =
+            Polynomial::<RScalar>::new(2).set2(RScalar::from_u64(13), RScalar::from_u64(2));
+        let x1 = RScalar::from_u64(5);
+        let x2 = RScalar::from_u64(7);
+        let x3 = RScalar::from_u64(2);
+
+        let indices = [x1, x2, x3];
+
+        let y1 = polynomial.evaluate(&x1);
+        let y2 = polynomial.evaluate(&x2);
+        let y3 = polynomial.evaluate(&x3);
+
+        let evaluated_points = [y1, y2, y3];
+
+        let interpolated_polynomial =
+            Polynomial::<RScalar>::interpolate(2, &evaluated_points, &indices);
+
+        for (a, b) in polynomial
+            .get_coefficients()
+            .zip(interpolated_polynomial.get_coefficients())
+        {
+            assert_eq!(a, b);
+        }
+    }
+
     #[test]
     fn poly_tests() {
         let poly_deg_4 = Polynomial::<RScalar>::new(4).set2(RScalar::one(), RScalar::from_u64(3));
