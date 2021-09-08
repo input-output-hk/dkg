@@ -796,14 +796,64 @@ impl<G: PrimeGroupElement> MembersFetchedState3<G> {
 
 #[derive(Clone)]
 pub struct MembersFetchedState4<G: PrimeGroupElement> {
-    pub sender_index: usize,
-    pub accusation: BroadcastPhase4<G>,
+    sender_index: usize,
+    accusation: BroadcastPhase4<G>,
+}
+
+impl<G: PrimeGroupElement> MembersFetchedState4<G> {
+    pub fn from_broadcast(
+        environment: &Environment<G>,
+        recipient_index: usize,
+        broadcast_messages: &[Option<BroadcastPhase4<G>>],
+    ) -> Vec<Self> {
+        assert!(recipient_index > 0 && recipient_index <= environment.nr_members);
+        assert_eq!(broadcast_messages.len(), environment.nr_members - 1);
+
+        let mut broadcaster_indices: Vec<usize> = (1..(environment.nr_members + 1)).collect();
+        broadcaster_indices.remove(recipient_index - 1);
+
+        let mut output = Vec::new();
+        for (&index, message) in broadcaster_indices.iter().zip(broadcast_messages.iter()) {
+            if let Some(broadcast_message) = message {
+                output.push(Self {
+                    sender_index: index,
+                    accusation: broadcast_message.clone(),
+                })
+            }
+        }
+        output
+    }
 }
 
 #[derive(Clone)]
 pub struct MembersFetchedState5<G: PrimeGroupElement> {
-    pub sender_index: usize,
-    pub disclosed_shares: BroadcastPhase5<G>,
+    sender_index: usize,
+    disclosed_shares: BroadcastPhase5<G>,
+}
+
+impl<G: PrimeGroupElement> MembersFetchedState5<G> {
+    pub fn from_broadcast(
+        environment: &Environment<G>,
+        recipient_index: usize,
+        broadcast_messages: &[Option<BroadcastPhase5<G>>],
+    ) -> Vec<Self> {
+        assert!(recipient_index > 0 && recipient_index <= environment.nr_members);
+        assert_eq!(broadcast_messages.len(), environment.nr_members - 1);
+
+        let mut broadcaster_indices: Vec<usize> = (1..(environment.nr_members + 1)).collect();
+        broadcaster_indices.remove(recipient_index - 1);
+
+        let mut output = Vec::new();
+        for (&index, message) in broadcaster_indices.iter().zip(broadcast_messages.iter()) {
+            if let Some(broadcast_message) = message {
+                output.push(Self {
+                    sender_index: index,
+                    disclosed_shares: broadcast_message.clone(),
+                })
+            }
+        }
+        output
+    }
 }
 
 #[derive(Clone)]
@@ -1186,15 +1236,17 @@ mod tests {
         assert!(party_3_broadcast_data_4.is_some());
 
         // Party 1 and 3 fetches it.
-        let fetched_state_1_phase_4 = vec![MembersFetchedState4 {
-            sender_index: 3,
-            accusation: party_3_broadcast_data_4.expect("There is a complaint"),
-        }];
+        let fetched_state_1_phase_4 = MembersFetchedState4::from_broadcast(
+            &environment,
+            1,
+            &[None, party_3_broadcast_data_4],
+        );
 
-        let fetched_state_3_phase_4 = vec![MembersFetchedState4 {
-            sender_index: 1,
-            accusation: party_1_broadcast_data_4.expect("There is a complaint"),
-        }];
+        let fetched_state_3_phase_4 = MembersFetchedState4::from_broadcast(
+            &environment,
+            3,
+            &[party_1_broadcast_data_4, None],
+        );
 
         // Then, party 1 and 3 need to fetch the complaint, use the broadcast data of party_2 from
         // phase 1 and phase 3, and verify the complaint.
@@ -1226,16 +1278,18 @@ mod tests {
         assert!(party_1_broadcast_data_5.is_some());
         assert!(party_3_broadcast_data_5.is_some());
 
-        // This fata is fetched by both parties
-        let fetched_data_1_phase_5 = vec![MembersFetchedState5 {
-            sender_index: 3,
-            disclosed_shares: party_3_broadcast_data_5.unwrap(),
-        }];
+        // This data is fetched by both parties
+        let fetched_data_1_phase_5 = MembersFetchedState5::from_broadcast(
+            &environment,
+            1,
+            &[None, party_3_broadcast_data_5],
+        );
 
-        let fetched_data_3_phase_5 = vec![MembersFetchedState5 {
-            sender_index: 1,
-            disclosed_shares: party_1_broadcast_data_5.unwrap(),
-        }];
+        let fetched_data_3_phase_5 = MembersFetchedState5::from_broadcast(
+            &environment,
+            3,
+            &[party_1_broadcast_data_5, None],
+        );
 
         // Finally, the different parties generate the master public key. To recreate the shares
         // of party two, they need to input the broadcast data.
