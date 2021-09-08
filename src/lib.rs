@@ -92,46 +92,22 @@
 //!         // blockchain. All parties fetched the data.
 //!
 //!         // Fetched state of party 1
-//!         let fetched_state_1 = vec![
-//!             MembersFetchedState1 {
-//!                 sender_index: 2,
-//!                 indexed_shares: broad_2.encrypted_shares[0].clone(),
-//!                 committed_coeffs: broad_2.committed_coefficients.clone(),
-//!             },
-//!             MembersFetchedState1 {
-//!                 sender_index: 3,
-//!                 indexed_shares: broad_3.encrypted_shares[0].clone(),
-//!                 committed_coeffs: broad_3.committed_coefficients.clone(),
-//!             },
-//!         ];
-//!
+//!         let fetched_state_1 = MembersFetchedState1::from_broadcast(
+//!             &environment,
+//!             1,
+//!             &[Some(broad_2.clone()), Some(broad_3.clone())],
+//!         );
+//!         
 //!         // Fetched state of party 2
-//!         let fetched_state_2 = vec![
-//!             MembersFetchedState1 {
-//!                 sender_index: 1,
-//!                 indexed_shares: broad_1.encrypted_shares[1].clone(),
-//!                 committed_coeffs: broad_1.committed_coefficients.clone(),
-//!             },
-//!             MembersFetchedState1 {
-//!                 sender_index: 3,
-//!                 indexed_shares: broad_3.encrypted_shares[1].clone(),
-//!                 committed_coeffs: broad_3.committed_coefficients.clone(),
-//!             },
-//!         ];
-//!
+//!         let fetched_state_2 = MembersFetchedState1::from_broadcast(
+//!             &environment,
+//!             2,
+//!             &[Some(broad_1.clone()), Some(broad_3)],
+//!         );
+//!         
 //!         // Fetched state of party 3
-//!         let fetched_state_3 = vec![
-//!             MembersFetchedState1 {
-//!                 sender_index: 1,
-//!                 indexed_shares: broad_1.encrypted_shares[2].clone(),
-//!                 committed_coeffs: broad_1.committed_coefficients.clone(),
-//!             },
-//!             MembersFetchedState1 {
-//!                 sender_index: 2,
-//!                 indexed_shares: broad_2.encrypted_shares[2].clone(),
-//!                 committed_coeffs: broad_2.committed_coefficients.clone(),
-//!             },
-//!         ];
+//!         let fetched_state_3 =
+//!         MembersFetchedState1::from_broadcast(&environment, 3, &[Some(broad_1), Some(broad_2)]);
 //!
 //!         // Now we proceed to phase two.
 //!         let (party_1_phase_2, party_1_phase_2_broadcast_data) = m1.proceed(&environment, &fetched_state_1, &mut rng);

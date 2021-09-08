@@ -72,3 +72,5 @@ impl From<ProofError> for DkgError {
         DkgError::ZkpVerificationFailed
     }
 }
+
+// todo: we probably want broadcast errors, to capture misbehaving parties

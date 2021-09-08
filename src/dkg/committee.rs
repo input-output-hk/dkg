@@ -246,60 +246,68 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
         let mut qualified_set = self.state.qualified_set.clone();
         let mut misbehaving_parties: Vec<MisbehavingPartiesRound1<G>> = Vec::new();
         for fetched_data in members_state {
-            if fetched_data.get_index() != self.state.index {
-                return (Err(DkgError::FetchedInvalidData), None);
-            }
-
-            if let (Some(decrypted_share), Some(decrypted_randomness)) = self
-                .state
-                .communication_sk
-                .decrypt_shares(fetched_data.indexed_shares.clone())
+            if let (Some(indexed_shares), Some(commited_coeffs)) =
+                fetched_data.get_shares_and_coeffs()
             {
-                let index_pow =
-                    <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
-                        .exp_iter()
-                        .take(environment.threshold + 1);
+                // If recipient indexed does not correspond with ones self, abort.
+                if indexed_shares.recipient_index != self.state.index {
+                    return (Err(DkgError::FetchedInvalidData), None);
+                }
 
-                let check_element = environment.commitment_key.h * decrypted_randomness
-                    + G::generator() * decrypted_share;
-                let multi_scalar = G::vartime_multiscalar_multiplication(
-                    index_pow,
-                    fetched_data.committed_coeffs.clone(),
-                );
+                if let (Some(decrypted_share), Some(decrypted_randomness)) = self
+                    .state
+                    .communication_sk
+                    .decrypt_shares(indexed_shares.clone())
+                {
+                    let index_pow =
+                        <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
+                            .exp_iter()
+                            .take(environment.threshold + 1);
 
-                self.state.indexed_received_shares[fetched_data.sender_index - 1] =
-                    Some(DecryptedShares {
-                        decrypted_share,
-                        decrypted_randomness,
-                        committed_coefficients: fetched_data.committed_coeffs.clone(),
-                    });
+                    let check_element = environment.commitment_key.h * decrypted_randomness
+                        + G::generator() * decrypted_share;
+                    let multi_scalar =
+                        G::vartime_multiscalar_multiplication(index_pow, commited_coeffs.clone());
 
-                if check_element != multi_scalar {
+                    self.state.indexed_received_shares[fetched_data.sender_index - 1] =
+                        Some(DecryptedShares {
+                            decrypted_share,
+                            decrypted_randomness,
+                            committed_coefficients: commited_coeffs,
+                        });
+
+                    if check_element != multi_scalar {
+                        let proof = ProofOfMisbehaviour::generate(
+                            &indexed_shares.clone(),
+                            &self.state.communication_sk,
+                            rng,
+                        );
+                        qualified_set[fetched_data.sender_index - 1] = 0;
+                        misbehaving_parties.push(MisbehavingPartiesRound1 {
+                            accused_index: fetched_data.sender_index,
+                            accusation_error: DkgError::ShareValidityFailed,
+                            proof_accusation: proof,
+                        });
+                    }
+                } else {
+                    // todo: handle the proofs. Might not be the most optimal way of handling these two
                     let proof = ProofOfMisbehaviour::generate(
-                        &fetched_data.indexed_shares,
+                        &indexed_shares.clone(),
                         &self.state.communication_sk,
                         rng,
                     );
                     qualified_set[fetched_data.sender_index - 1] = 0;
                     misbehaving_parties.push(MisbehavingPartiesRound1 {
                         accused_index: fetched_data.sender_index,
-                        accusation_error: DkgError::ShareValidityFailed,
+                        accusation_error: DkgError::ScalarOutOfBounds,
                         proof_accusation: proof,
                     });
                 }
             } else {
-                // todo: handle the proofs. Might not be the most optimal way of handling these two
-                let proof = ProofOfMisbehaviour::generate(
-                    &fetched_data.indexed_shares,
-                    &self.state.communication_sk,
-                    rng,
-                );
+                // We simply disqualify the member. All honest members would arrive to the
+                // same conclusion, due to the way these values are defined as None.
+                // todo: test
                 qualified_set[fetched_data.sender_index - 1] = 0;
-                misbehaving_parties.push(MisbehavingPartiesRound1 {
-                    accused_index: fetched_data.sender_index,
-                    accusation_error: DkgError::ScalarOutOfBounds,
-                    proof_accusation: proof,
-                });
             }
         }
 
@@ -673,14 +681,64 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
 /// of the generated polynomials, `committed_coeffs`.
 #[derive(Clone)]
 pub struct MembersFetchedState1<G: PrimeGroupElement> {
-    pub sender_index: usize,
-    pub indexed_shares: EncryptedShares<G>,
-    pub committed_coeffs: Vec<G>,
+    sender_index: usize,
+    indexed_shares: Option<EncryptedShares<G>>,
+    committed_coeffs: Option<Vec<G>>,
 }
 
 impl<G: PrimeGroupElement> MembersFetchedState1<G> {
-    fn get_index(&self) -> usize {
-        self.indexed_shares.recipient_index
+    fn get_shares_and_coeffs(&self) -> (Option<EncryptedShares<G>>, Option<Vec<G>>) {
+        (self.indexed_shares.clone(), self.committed_coeffs.clone())
+    }
+    /// Given as input all broadcast messages in an ordered vector, returns a vector of indexed
+    /// fetched states. If some party does not broadcast in Round 1, then the entry should be
+    /// filled with `None`.
+    pub fn from_broadcast(
+        environment: &Environment<G>,
+        recipient_index: usize,
+        broadcast_messages: &[Option<BroadcastPhase1<G>>],
+    ) -> Vec<Self> {
+        // We should have broadcasters for ALL other participants
+        assert!(recipient_index > 0 && recipient_index <= environment.nr_members);
+        assert_eq!(broadcast_messages.len(), environment.nr_members - 1);
+
+        let mut broadcaster_indices: Vec<usize> = (1..(environment.nr_members + 1)).collect();
+        broadcaster_indices.remove(recipient_index - 1);
+
+        let mut output = Vec::new();
+        for (&index, message) in broadcaster_indices.iter().zip(broadcast_messages.iter()) {
+            if let Some(broadcast_message) = message {
+                // We first check that the party sent messages to all participants, and that
+                // the number of committed coefficients corresponds with the expected degree of
+                // the polynomial. If that is not the case, then no fetched data is recorded
+                // for this party, and will disqualify it in the next round.
+                if broadcast_message.committed_coefficients.len() != environment.threshold + 1
+                    || broadcast_message.encrypted_shares.len() != environment.nr_members
+                {
+                    output.push(MembersFetchedState1 {
+                        sender_index: index,
+                        indexed_shares: None,
+                        committed_coeffs: None,
+                    });
+                    continue;
+                }
+
+                output.push(MembersFetchedState1 {
+                    sender_index: index,
+                    indexed_shares: Some(
+                        broadcast_message.encrypted_shares[recipient_index - 1].clone(),
+                    ),
+                    committed_coeffs: Some(broadcast_message.committed_coefficients.clone()),
+                });
+            } else {
+                output.push(MembersFetchedState1 {
+                    sender_index: index,
+                    indexed_shares: None,
+                    committed_coeffs: None,
+                })
+            }
+        }
+        output
     }
 }
 
@@ -772,11 +830,8 @@ mod tests {
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
 
         // Now, party one fetches the state of the other party, mainly party two
-        let fetched_state = vec![MembersFetchedState1 {
-            sender_index: 2,
-            indexed_shares: broadcast2.encrypted_shares[0].clone(),
-            committed_coeffs: broadcast2.committed_coefficients.clone(),
-        }];
+        let fetched_state =
+            MembersFetchedState1::from_broadcast(&environment, 1, &[Some(broadcast2)]);
 
         let phase_2 = m1.proceed(&environment, &fetched_state, &mut rng);
         if let Some(_data) = phase_2.1 {
@@ -811,18 +866,11 @@ mod tests {
         broad_2.committed_coefficients = vec![PrimeGroupElement::zero(); threshold + 1];
         broad_3.committed_coefficients = vec![PrimeGroupElement::zero(); threshold + 1];
 
-        let fetched_state = vec![
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[0].clone(),
-                committed_coeffs: vec![PrimeGroupElement::zero(); threshold + 1],
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: vec![PrimeGroupElement::zero(); threshold + 1],
-            },
-        ];
+        let fetched_state = MembersFetchedState1::from_broadcast(
+            &environment,
+            1,
+            &[Some(broad_2.clone()), Some(broad_3.clone())],
+        );
 
         // Given that there is a number of misbehaving parties higher than the threshold, proceeding
         // to step 2 should fail.
@@ -871,18 +919,11 @@ mod tests {
 
         // Now, party one fetches invalid state of a single party, mainly party three
         broad_3.committed_coefficients = vec![PrimeGroupElement::zero(); threshold + 1];
-        let fetched_state = vec![
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[0].clone(),
-                committed_coeffs: broad_2.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state = MembersFetchedState1::from_broadcast(
+            &environment,
+            1,
+            &[Some(broad_2), Some(broad_3.clone())],
+        );
 
         // Given that party 3 submitted encrypted shares which do not correspond to the
         // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
@@ -939,32 +980,15 @@ mod tests {
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
 
         // Fetched state of party 1
-        let fetched_state_1 = vec![
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[0].clone(),
-                committed_coeffs: broad_2.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_1 = MembersFetchedState1::from_broadcast(
+            &environment,
+            1,
+            &[Some(broad_2), Some(broad_3.clone())],
+        );
 
         // Fetched state of party 2
-        let fetched_state_2 = vec![
-            MembersFetchedState1 {
-                sender_index: 1,
-                indexed_shares: broad_1.encrypted_shares[1].clone(),
-                committed_coeffs: broad_1.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[1].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_2 =
+            MembersFetchedState1::from_broadcast(&environment, 2, &[Some(broad_1), Some(broad_3)]);
 
         // Now we proceed to phase two.
         let (party_1_phase_2, _party_1_phase_2_broadcast_data) =
@@ -1036,46 +1060,25 @@ mod tests {
         let broadcasts_phase_1 = [&broad_1, &broad_2, &broad_3];
 
         // Fetched state of party 1
-        let fetched_state_1 = vec![
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[0].clone(),
-                committed_coeffs: broad_2.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_1 = MembersFetchedState1::from_broadcast(
+            &environment,
+            1,
+            &[Some(broad_2.clone()), Some(broad_3.clone())],
+        );
 
         // Fetched state of party 2
-        let fetched_state_2 = vec![
-            MembersFetchedState1 {
-                sender_index: 1,
-                indexed_shares: broad_1.encrypted_shares[1].clone(),
-                committed_coeffs: broad_1.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[1].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_2 = MembersFetchedState1::from_broadcast(
+            &environment,
+            2,
+            &[Some(broad_1.clone()), Some(broad_3.clone())],
+        );
 
         // Fetched state of party 3
-        let fetched_state_3 = vec![
-            MembersFetchedState1 {
-                sender_index: 1,
-                indexed_shares: broad_1.encrypted_shares[2].clone(),
-                committed_coeffs: broad_1.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[2].clone(),
-                committed_coeffs: broad_2.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_3 = MembersFetchedState1::from_broadcast(
+            &environment,
+            3,
+            &[Some(broad_1.clone()), Some(broad_2.clone())],
+        );
 
         // Now we proceed to phase two.
         let (party_1_phase_2, party_1_phase_2_broadcast_data) =
@@ -1255,46 +1258,22 @@ mod tests {
         // blockchain. All parties fetched the data.
 
         // Fetched state of party 1
-        let fetched_state_1 = vec![
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[0].clone(),
-                committed_coeffs: broad_2.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[0].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_1 = MembersFetchedState1::from_broadcast(
+            &environment,
+            1,
+            &[Some(broad_2.clone()), Some(broad_3.clone())],
+        );
 
         // Fetched state of party 2
-        let fetched_state_2 = vec![
-            MembersFetchedState1 {
-                sender_index: 1,
-                indexed_shares: broad_1.encrypted_shares[1].clone(),
-                committed_coeffs: broad_1.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 3,
-                indexed_shares: broad_3.encrypted_shares[1].clone(),
-                committed_coeffs: broad_3.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_2 = MembersFetchedState1::from_broadcast(
+            &environment,
+            2,
+            &[Some(broad_1.clone()), Some(broad_3)],
+        );
 
         // Fetched state of party 3
-        let fetched_state_3 = vec![
-            MembersFetchedState1 {
-                sender_index: 1,
-                indexed_shares: broad_1.encrypted_shares[2].clone(),
-                committed_coeffs: broad_1.committed_coefficients.clone(),
-            },
-            MembersFetchedState1 {
-                sender_index: 2,
-                indexed_shares: broad_2.encrypted_shares[2].clone(),
-                committed_coeffs: broad_2.committed_coefficients.clone(),
-            },
-        ];
+        let fetched_state_3 =
+            MembersFetchedState1::from_broadcast(&environment, 3, &[Some(broad_1), Some(broad_2)]);
 
         // Now we proceed to phase two.
         let (party_1_phase_2, party_1_phase_2_broadcast_data) =
