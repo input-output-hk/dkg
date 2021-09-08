@@ -3,6 +3,7 @@ use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
 use crate::dkg::committee::EncryptedShares;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
+use std::cmp::Ordering;
 
 /// Committee member secret key share.
 #[derive(Clone, Debug, PartialEq)]
@@ -21,6 +22,28 @@ pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>)
 /// need a pre-existing keypair to communicate with other members.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
+
+impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let self_bytes = self.0.pk.to_bytes();
+        let other_bytes = other.0.pk.to_bytes();
+
+        let mut ordering = Ordering::Equal;
+        for (s, o) in self_bytes.iter().zip(other_bytes.iter()) {
+            ordering = s.cmp(o);
+            if ordering != Ordering::Equal {
+                break;
+            }
+        }
+        ordering
+    }
+}
+
+impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 /// The overall committee public key used for everyone to encrypt their vote to.
 #[derive(Debug, Clone, Eq, PartialEq)]

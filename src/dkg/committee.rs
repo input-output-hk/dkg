@@ -131,6 +131,9 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         assert_eq!(committee_pks.len(), environment.nr_members);
         assert!(my <= environment.nr_members);
 
+        let mut ordered_pks = committee_pks.clone().to_vec();
+        ordered_pks.sort();
+
         // We initialise the vector of committed and decrypted shares, to which we include
         // the shares of the party initialising
         let mut committed_shares = vec![None; environment.nr_members];
@@ -163,7 +166,7 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
             let randomness = hiding_polynomial.evaluate(&idx);
             let share = sharing_polynomial.evaluate(&idx);
 
-            let pk = &committee_pks[i];
+            let pk = &ordered_pks[i];
 
             let encrypted_randomness = pk.hybrid_encrypt(&randomness.to_bytes(), rng);
             let encrypted_share = pk.hybrid_encrypt(&share.to_bytes(), rng);
@@ -190,7 +193,7 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
             index: my,
             environment: environment.clone(),
             communication_sk: secret_key.clone(),
-            members_pks: committee_pks.to_vec(),
+            members_pks: ordered_pks.to_vec(),
             final_share: None,
             public_share: None,
             master_public_key: None,
