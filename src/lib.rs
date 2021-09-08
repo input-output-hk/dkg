@@ -90,6 +90,11 @@
 //!
 //!         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
 //!         // blockchain. All parties fetched the data.
+//!         let optional_broadcasts_phase_1 = [
+//!             Some(broad_1.clone()),
+//!             Some(broad_2.clone()),
+//!             Some(broad_3.clone()),
+//!         ];
 //!
 //!         // Fetched state of party 1
 //!         let fetched_state_1 = MembersFetchedState1::from_broadcast(
@@ -119,9 +124,9 @@
 //!         }
 //!
 //!         // We proceed to phase three (with no input because there was no misbehaving parties).
-//!         let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2?.proceed(&[]);
-//!         let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.proceed(&[]);
-//!         let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.proceed(&[]);
+//!         let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+//!         let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+//!         let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
 //!
 //!        // Fetched state of party 1.
 //!         let fetched_state_1_phase_3 = MembersFetchedState3::from_broadcast(
