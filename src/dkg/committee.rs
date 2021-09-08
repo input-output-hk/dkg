@@ -424,35 +424,41 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
         for fetched_commitments in fetched_state_3 {
             // if the fetched commitment is from a disqualified player, we skip
             if self.state.qualified_set[fetched_commitments.sender_index - 1] != 0 {
-                // We store the indexed committed coefficients
-                self.state.indexed_committed_shares[fetched_commitments.sender_index - 1] =
-                    Some(fetched_commitments.committed_coefficients.clone());
-
-                let index_pow =
-                    <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
-                        .exp_iter()
-                        .take(self.state.environment.threshold + 1);
-
                 let indexed_shares = received_shares[fetched_commitments.sender_index - 1]
                     .clone()
                     .expect("If it is part of honest members, their shares should be recorded");
+                // We proceed only if there are coefficients.
+                if let Some(coefficients) = &fetched_commitments.committed_coefficients {
+                    // We store the indexed committed coefficients
+                    self.state.indexed_committed_shares[fetched_commitments.sender_index - 1] =
+                        Some(coefficients.clone());
 
-                let check_element = G::generator() * indexed_shares.decrypted_share;
-                let multi_scalar = G::vartime_multiscalar_multiplication(
-                    index_pow,
-                    fetched_commitments.committed_coefficients.clone(),
-                );
+                    let index_pow =
+                        <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
+                            .exp_iter()
+                            .take(self.state.environment.threshold + 1);
 
-                if check_element != multi_scalar {
+                    let check_element = G::generator() * indexed_shares.decrypted_share;
+                    let multi_scalar =
+                        G::vartime_multiscalar_multiplication(index_pow, coefficients.clone());
+
+                    if check_element != multi_scalar {
+                        misbehaving_parties.push(MisbehavingPartiesRound3 {
+                            accused_index: fetched_commitments.sender_index,
+                            decrypted_share: indexed_shares.decrypted_share,
+                            decrypted_randomness: indexed_shares.decrypted_randomness,
+                        });
+                        continue;
+                    }
+
+                    honest[fetched_commitments.sender_index - 1] |= 1;
+                } else {
                     misbehaving_parties.push(MisbehavingPartiesRound3 {
                         accused_index: fetched_commitments.sender_index,
                         decrypted_share: indexed_shares.decrypted_share,
                         decrypted_randomness: indexed_shares.decrypted_randomness,
                     });
-                    continue;
                 }
-
-                honest[fetched_commitments.sender_index - 1] |= 1;
             }
         }
 
@@ -533,7 +539,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
                     [fetched_complaints.misbehaving_party.accused_index - 1]
                     .as_ref()
                     .expect("If it is part of honest members, their shares should be recorded");
-                reconstruct_shares[fetched_complaints.misbehaving_party.accused_index] =
+                reconstruct_shares[fetched_complaints.misbehaving_party.accused_index - 1] =
                     Some(indexed_shares.decrypted_share);
                 self.state.reconstructable_set
                     [fetched_complaints.misbehaving_party.accused_index - 1] |= 1;
@@ -542,7 +548,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
 
         let total_honest = self.state.qualified_set.iter().sum::<usize>()
             - self.state.reconstructable_set.iter().sum::<usize>();
-        if total_honest < self.state.environment.threshold {
+        if total_honest <= self.state.environment.threshold {
             return (Err(DkgError::MisbehaviourHigherThreshold), None);
         }
 
@@ -600,7 +606,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
         for i in 0..self.state.environment.nr_members {
             if self.state.reconstructable_set[i] == 1 && self.state.qualified_set[i] != 1 {
                 panic!("Only qualified members should be reconstructed");
-            } else if self.state.reconstructable_set[i] == 1 {
+            } else if self.state.reconstructable_set[i] == 1 && self.state.qualified_set[i] == 1 {
                 // Then we need to reconstruct, using the data from the broadcast_complaints
                 // For that we perform the lagrange interpolation
                 let mut indices: Vec<G::CorrespondingScalar> = Vec::new();
@@ -618,7 +624,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
                 if let Some(complaint) = broadcast_complaints {
                     for disclosed_shares in complaint {
                         // if it is not within the final parties, we ignore it
-                        if final_parties[disclosed_shares.sender_index] == 1 {
+                        if final_parties[disclosed_shares.sender_index - 1] == 1 {
                             if let Some(share) =
                                 disclosed_shares.disclosed_shares.misbehaving_parties[i]
                             {
@@ -681,7 +687,8 @@ impl<G: PrimeGroupElement> MembersFetchedState1<G> {
 #[derive(Clone)]
 pub struct MembersFetchedState3<G: PrimeGroupElement> {
     pub sender_index: usize,
-    pub committed_coefficients: Vec<G>,
+    /// Party might have not sent the value.
+    pub committed_coefficients: Option<Vec<G>>,
 }
 
 #[derive(Clone)]
@@ -728,9 +735,10 @@ impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<'a, G> {
                     misbehaving_party: single_accusation.clone(),
                     // If the accused party did not broadcast any data during phase 1 it should
                     // be disqualified.
-                    // todo: we should check if it is part of the qualified set, rather than returning an error depending on the input of a possibly adversarial party
-                    accused_broadcast_phase_1: broadcasts_phase_1[single_accusation.accused_index],
-                    accused_broadcast_phase_3: broadcasts_phase_3[single_accusation.accused_index],
+                    accused_broadcast_phase_1: broadcasts_phase_1
+                        [single_accusation.accused_index - 1],
+                    accused_broadcast_phase_3: broadcasts_phase_3
+                        [single_accusation.accused_index - 1],
                 })
             }
         }
@@ -976,7 +984,7 @@ mod tests {
         // Fetched state of party 1. We have mimic'ed that party three stopped participating.
         let party_1_fetched_state_phase_3 = vec![MembersFetchedState3 {
             sender_index: 2,
-            committed_coefficients: party_2_broadcast_data_3.unwrap().committed_coefficients,
+            committed_coefficients: Some(party_2_broadcast_data_3.unwrap().committed_coefficients),
         }];
 
         // The protocol should finalise, given that we have two honest parties finalising the protocol
@@ -991,7 +999,7 @@ mod tests {
         // 2, and there should be the proof of misbehaviour of party 1.
         let party_2_fetched_state_phase_3 = vec![MembersFetchedState3::<RistrettoPoint> {
             sender_index: 1,
-            committed_coefficients: vec![PrimeGroupElement::generator(); threshold + 1],
+            committed_coefficients: Some(vec![PrimeGroupElement::generator(); threshold + 1]),
         }];
 
         let failing_phase = party_2_phase_3
@@ -1001,7 +1009,7 @@ mod tests {
         assert!(failing_phase.1.is_some());
     }
 
-    // #[test]
+    #[test]
     fn misbehaviour_phase_4() {
         let mut rng = OsRng;
 
@@ -1086,8 +1094,11 @@ mod tests {
 
         // We proceed to phase three (with no input because there was no misbehaving parties).
         let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2.unwrap().proceed(&[]);
-        let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2.unwrap().proceed(&[]);
+        let (_party_2_phase_3, _) = party_2_phase_2.unwrap().proceed(&[]);
         let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2.unwrap().proceed(&[]);
+
+        // We mimic that party 2 misbehaves and doesn't broadcast data.
+        let party_2_broadcast_data_3 = None;
 
         // Parties broadcast data
         let broadcasts_phase_3 = [
@@ -1102,8 +1113,6 @@ mod tests {
             .clone()
             .expect("valid runs returns something")
             .committed_coefficients;
-        // We mimic that party 2 misbehaves
-        let committed_coefficients_2 = vec![RistrettoPoint::zero(); threshold + 1];
         let committed_coefficients_3 = party_3_broadcast_data_3
             .clone()
             .expect("valid runs returns something")
@@ -1113,43 +1122,29 @@ mod tests {
         let fetched_state_1_phase_3 = vec![
             MembersFetchedState3 {
                 sender_index: 2,
-                committed_coefficients: committed_coefficients_2.clone(),
+                committed_coefficients: None,
             },
             MembersFetchedState3 {
                 sender_index: 3,
-                committed_coefficients: committed_coefficients_3.clone(),
+                committed_coefficients: Some(committed_coefficients_3.clone()),
             },
         ];
 
-        // Fetched state of party 1.
-        let fetched_state_2_phase_3 = vec![
-            MembersFetchedState3 {
-                sender_index: 1,
-                committed_coefficients: committed_coefficients_1.clone(),
-            },
-            MembersFetchedState3 {
-                sender_index: 3,
-                committed_coefficients: committed_coefficients_3,
-            },
-        ];
-
-        // Fetched state of party 1.
+        // Fetched state of party 3.
         let fetched_state_3_phase_3 = vec![
             MembersFetchedState3 {
-                sender_index: 2,
-                committed_coefficients: committed_coefficients_2,
+                sender_index: 1,
+                committed_coefficients: Some(committed_coefficients_1),
             },
             MembersFetchedState3 {
-                sender_index: 1,
-                committed_coefficients: committed_coefficients_1,
+                sender_index: 2,
+                committed_coefficients: None,
             },
         ];
 
         // We proceed to phase four with the fetched state of the previous phase.
         let (party_1_phase_4, party_1_broadcast_data_4) =
             party_1_phase_3.unwrap().proceed(&fetched_state_1_phase_3);
-        let (party_2_phase_4, _party_2_broadcast_data_4) =
-            party_2_phase_3.unwrap().proceed(&fetched_state_2_phase_3);
         let (party_3_phase_4, party_3_broadcast_data_4) =
             party_3_phase_3.unwrap().proceed(&fetched_state_3_phase_3);
 
@@ -1190,7 +1185,6 @@ mod tests {
         let (party_1_phase_5, party_1_broadcast_data_5) = party_1_phase_4
             .unwrap()
             .proceed(&fetched_complaints_1_phase_4);
-        let (_party_2_phase_5, _party_2_broadcast_data_5) = party_2_phase_4.unwrap().proceed(&[]);
         let (party_3_phase_5, party_3_broadcast_data_5) = party_3_phase_4
             .unwrap()
             .proceed(&fetched_complaints_3_phase_4);
@@ -1338,11 +1332,11 @@ mod tests {
         let fetched_state_1_phase_3 = vec![
             MembersFetchedState3 {
                 sender_index: 2,
-                committed_coefficients: committed_coefficients_2.clone(),
+                committed_coefficients: Some(committed_coefficients_2.clone()),
             },
             MembersFetchedState3 {
                 sender_index: 3,
-                committed_coefficients: committed_coefficients_3.clone(),
+                committed_coefficients: Some(committed_coefficients_3.clone()),
             },
         ];
 
@@ -1350,11 +1344,11 @@ mod tests {
         let fetched_state_2_phase_3 = vec![
             MembersFetchedState3 {
                 sender_index: 1,
-                committed_coefficients: committed_coefficients_1.clone(),
+                committed_coefficients: Some(committed_coefficients_1.clone()),
             },
             MembersFetchedState3 {
                 sender_index: 3,
-                committed_coefficients: committed_coefficients_3,
+                committed_coefficients: Some(committed_coefficients_3),
             },
         ];
 
@@ -1362,11 +1356,11 @@ mod tests {
         let fetched_state_3_phase_3 = vec![
             MembersFetchedState3 {
                 sender_index: 2,
-                committed_coefficients: committed_coefficients_2,
+                committed_coefficients: Some(committed_coefficients_2),
             },
             MembersFetchedState3 {
                 sender_index: 1,
-                committed_coefficients: committed_coefficients_1,
+                committed_coefficients: Some(committed_coefficients_1),
             },
         ];
 

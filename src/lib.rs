@@ -157,12 +157,12 @@
 //!         let fetched_state_1_phase_3 = vec![
 //!             MembersFetchedState3 {
 //!                 sender_index: 2,
-//!                 committed_coefficients: committed_coefficients_2.clone()
+//!                 committed_coefficients: Some(committed_coefficients_2.clone())
 //!             },
 //!
 //!             MembersFetchedState3 {
 //!                 sender_index: 3,
-//!                 committed_coefficients: committed_coefficients_3.clone()
+//!                 committed_coefficients: Some(committed_coefficients_3.clone())
 //!             },
 //!         ];
 //!
@@ -170,12 +170,12 @@
 //!         let fetched_state_2_phase_3 = vec![
 //!             MembersFetchedState3 {
 //!                 sender_index: 1,
-//!                 committed_coefficients: committed_coefficients_1.clone()
+//!                 committed_coefficients: Some(committed_coefficients_1.clone())
 //!             },
 //!
 //!             MembersFetchedState3 {
 //!                 sender_index: 3,
-//!                 committed_coefficients: committed_coefficients_3
+//!                 committed_coefficients: Some(committed_coefficients_3)
 //!             },
 //!         ];
 //!
@@ -183,12 +183,12 @@
 //!         let fetched_state_3_phase_3 = vec![
 //!             MembersFetchedState3 {
 //!                 sender_index: 2,
-//!                 committed_coefficients: committed_coefficients_2
+//!                 committed_coefficients: Some(committed_coefficients_2)
 //!             },
 //!
 //!             MembersFetchedState3 {
 //!                 sender_index: 1,
-//!                 committed_coefficients: committed_coefficients_1
+//!                 committed_coefficients: Some(committed_coefficients_1)
 //!             },
 //!         ];
 //!
