@@ -123,51 +123,29 @@
 //!         let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.proceed(&[]);
 //!         let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.proceed(&[]);
 //!
-//!         // A valid run of phase 3 will always output a broadcast message. The parties fetch it,
-//!         // and use it to proceed to phase 4.
-//!         let committed_coefficients_1 = party_1_broadcast_data_3.expect("valid runs returns something").committed_coefficients;
-//!         let committed_coefficients_2 = party_2_broadcast_data_3.expect("valid runs returns something").committed_coefficients;
-//!         let committed_coefficients_3 = party_3_broadcast_data_3.expect("valid runs returns something").committed_coefficients;
+//!        // Fetched state of party 1.
+//!         let fetched_state_1_phase_3 = MembersFetchedState3::from_broadcast(
+//!             &environment,
+//!             1,
+//!             &[
+//!                 party_2_broadcast_data_3.clone(),
+//!                 party_3_broadcast_data_3.clone(),
+//!             ],
+//!         );
 //!
-//!         // Fetched state of party 1.
-//!         let fetched_state_1_phase_3 = vec![
-//!             MembersFetchedState3 {
-//!                 sender_index: 2,
-//!                 committed_coefficients: Some(committed_coefficients_2.clone())
-//!             },
+//!         // Fetched state of party 2.
+//!         let fetched_state_2_phase_3 = MembersFetchedState3::from_broadcast(
+//!             &environment,
+//!             2,
+//!             &[party_1_broadcast_data_3.clone(), party_3_broadcast_data_3],
+//!         );
 //!
-//!             MembersFetchedState3 {
-//!                 sender_index: 3,
-//!                 committed_coefficients: Some(committed_coefficients_3.clone())
-//!             },
-//!         ];
-//!
-//!         // Fetched state of party 1.
-//!         let fetched_state_2_phase_3 = vec![
-//!             MembersFetchedState3 {
-//!                 sender_index: 1,
-//!                 committed_coefficients: Some(committed_coefficients_1.clone())
-//!             },
-//!
-//!             MembersFetchedState3 {
-//!                 sender_index: 3,
-//!                 committed_coefficients: Some(committed_coefficients_3)
-//!             },
-//!         ];
-//!
-//!         // Fetched state of party 1.
-//!         let fetched_state_3_phase_3 = vec![
-//!             MembersFetchedState3 {
-//!                 sender_index: 2,
-//!                 committed_coefficients: Some(committed_coefficients_2)
-//!             },
-//!
-//!             MembersFetchedState3 {
-//!                 sender_index: 1,
-//!                 committed_coefficients: Some(committed_coefficients_1)
-//!             },
-//!         ];
-//!
+//!         // Fetched state of party 3.
+//!         let fetched_state_3_phase_3 = MembersFetchedState3::from_broadcast(
+//!             &environment,
+//!             3,
+//!             &[party_1_broadcast_data_3.clone(), party_2_broadcast_data_3.clone()],
+//!         );
 //!         // We proceed to phase four with the fetched state of the previous phase.
 //!         let (party_1_phase_4, _party_1_broadcast_data_4) =
 //!             party_1_phase_3?.proceed(&fetched_state_1_phase_3);
