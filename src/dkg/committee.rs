@@ -45,8 +45,8 @@ pub struct IndividualState<G: PrimeGroupElement> {
 
 /// Definition of a phase
 pub struct Phases<G: PrimeGroupElement, Phase> {
-    pub state: Box<IndividualState<G>>,
-    pub phase: PhantomData<Phase>,
+    state: IndividualState<G>,
+    phase: PhantomData<Phase>,
 }
 
 impl<G: PrimeGroupElement, P> Debug for Phases<G, P> {
@@ -200,7 +200,7 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
 
         (
             Phases::<G, Phase1> {
-                state: Box::new(state),
+                state,
                 phase: PhantomData,
             },
             BroadcastPhase1 {
@@ -212,6 +212,27 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
 }
 
 impl<G: PrimeGroupElement> Phases<G, Phase1> {
+    /// Function that takes as input the broadcast data from the initialisation and proceeds to
+    /// phase 1.
+    pub fn proceed_with_broadcast<R>(
+        self,
+        broadcast_messages: &[Option<BroadcastPhase1<G>>],
+        rng: &mut R,
+    ) -> (
+        Result<Phases<G, Phase2>, DkgError>,
+        Option<BroadcastPhase2<G>>,
+    )
+    where
+        R: CryptoRng + RngCore,
+    {
+        let processed_data = MembersFetchedState1::from_broadcast(
+            &self.state.environment,
+            self.state.index,
+            broadcast_messages,
+        );
+
+        self.proceed(&processed_data, rng)
+    }
     /// Function to proceed to phase 2. It takes as input the `environment`, and the fetched data
     /// from phase 1, `members_state`, directed at the fetching party. It checks that the received
     /// shares correspond with the
@@ -233,7 +254,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
     /// than the number allowed by the threshold, the phase transition fails.
     pub fn proceed<R>(
         mut self,
-        environment: &Environment<G>,
         members_state: &[MembersFetchedState1<G>],
         rng: &mut R,
     ) -> (
@@ -262,9 +282,10 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
                     let index_pow =
                         <G::CorrespondingScalar as Scalar>::from_u64(self.state.index as u64)
                             .exp_iter()
-                            .take(environment.threshold + 1);
+                            .take(self.state.environment.threshold + 1);
 
-                    let check_element = environment.commitment_key.h * decrypted_randomness
+                    let check_element = self.state.environment.commitment_key.h
+                        * decrypted_randomness
                         + G::generator() * decrypted_share;
                     let multi_scalar =
                         G::vartime_multiscalar_multiplication(index_pow, commited_coeffs.clone());
@@ -311,7 +332,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
             }
         }
 
-        if misbehaving_parties.len() > environment.threshold {
+        if misbehaving_parties.len() > self.state.environment.threshold {
             return (
                 Err(DkgError::MisbehaviourHigherThreshold),
                 Some(BroadcastPhase2 {
@@ -407,6 +428,24 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
 }
 
 impl<G: PrimeGroupElement> Phases<G, Phase3> {
+    /// Function that takes as input the broadcast data from the previous phase and proceeds to
+    /// phase 4.
+    pub fn proceed_with_broadcast<R>(
+        self,
+        broadcast_messages: &[Option<BroadcastPhase3<G>>],
+    ) -> (
+        Result<Phases<G, Phase4>, DkgError>,
+        Option<BroadcastPhase4<G>>,
+    ) {
+        let processed_data = MembersFetchedState3::from_broadcast(
+            &self.state.environment,
+            self.state.index,
+            broadcast_messages,
+        );
+
+        self.proceed(&processed_data)
+    }
+
     /// Each participant fetches the commitment of the polynomials of the previous round, and
     /// verifies that it corresponds with the polynomial committed initially. In particular player
     /// $i$ checks that
@@ -493,6 +532,34 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
 }
 
 impl<G: PrimeGroupElement> Phases<G, Phase4> {
+    /// Function that takes as input the broadcast data from the previous phase and proceeds to
+    /// phase 5.
+    pub fn proceed_with_broadcast<'a, R>(
+        self,
+        broadcast_messages: &[Option<BroadcastPhase4<G>>],
+        // For qualified members, there should always be broadacst of phase 1. Otherwise the
+        // party should not be qualified.
+        broadcasts_phase_1: &[&'a BroadcastPhase1<G>],
+        // A qualified member might not broadcast in phase 3.
+        broadcasts_phase_3: &[&'a Option<BroadcastPhase3<G>>],
+    ) -> (
+        Result<Phases<G, Phase5>, DkgError>,
+        Option<BroadcastPhase5<G>>,
+    ) {
+        let processed_data = MembersFetchedState4::from_broadcast(
+            &self.state.environment,
+            self.state.index,
+            broadcast_messages,
+        );
+
+        let processed_complaints = FetchedMisbehaviourComplaints::from_broadcasts_4(
+            &processed_data,
+            broadcasts_phase_1,
+            broadcasts_phase_3,
+        );
+
+        self.proceed(&processed_complaints)
+    }
     /// This functions takes as input the broadcast complaints of the previous phase. The
     /// misbehaving parties are still part of the qualified set, and the master public key will
     /// use their shares. However, they no longer participate in the protocol, and instead the
@@ -573,6 +640,21 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
 }
 
 impl<G: PrimeGroupElement> Phases<G, Phase5> {
+    /// Function that takes as input the broadcast data from the previous phase and finalises
+    /// the protocol.
+    pub fn finalise_with_broadcast<R>(
+        self,
+        broadcast_messages: &[Option<BroadcastPhase5<G>>],
+    ) -> Result<(MasterPublicKey<G>, MemberSecretShare<G>), DkgError> {
+        let processed_data = MembersFetchedState5::from_broadcast(
+            &self.state.environment,
+            self.state.index,
+            broadcast_messages,
+        );
+
+        self.finalise(&processed_data)
+    }
+
     /// This phase transition finalises the DKG protocol. It takes as input the broadcast complaints
     /// from the previous phase, and returns the master public key using the key shares of the
     /// honest parties, and reconstructing the shares of the misbehaving parties. This last point
@@ -594,7 +676,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
     /// If `final_parties` is smaller than the threshold, it returns an error.
     pub fn finalise(
         self,
-        broadcast_complaints: Option<&[MembersFetchedState5<G>]>,
+        broadcast_complaints: &[MembersFetchedState5<G>],
     ) -> Result<(MasterPublicKey<G>, MemberSecretShare<G>), DkgError> {
         let mut master_key = G::zero();
         // set of qualified without counting the misbehaving of the last round. We need this to
@@ -629,18 +711,16 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
                         .decrypted_share,
                 );
 
-                if let Some(complaint) = broadcast_complaints {
-                    for disclosed_shares in complaint {
-                        // if it is not within the final parties, we ignore it
-                        if final_parties[disclosed_shares.sender_index - 1] == 1 {
-                            if let Some(share) =
-                                disclosed_shares.disclosed_shares.misbehaving_parties[i]
-                            {
-                                indices.push(G::CorrespondingScalar::from_u64(
-                                    disclosed_shares.sender_index as u64,
-                                ));
-                                evaluated_points.push(share);
-                            }
+                for disclosed_shares in broadcast_complaints {
+                    // if it is not within the final parties, we ignore it
+                    if final_parties[disclosed_shares.sender_index - 1] == 1 {
+                        if let Some(share) =
+                            disclosed_shares.disclosed_shares.misbehaving_parties[i]
+                        {
+                            indices.push(G::CorrespondingScalar::from_u64(
+                                disclosed_shares.sender_index as u64,
+                            ));
+                            evaluated_points.push(share);
                         }
                     }
                 }
@@ -878,7 +958,7 @@ impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<'a, G> {
         broadcasts_phase_1: &[&'a BroadcastPhase1<G>],
         // A qualified member might not broadcast in phase 3.
         broadcasts_phase_3: &[&'a Option<BroadcastPhase3<G>>],
-    ) -> Result<Vec<Self>, DkgError> {
+    ) -> Vec<Self> {
         // todo: with capacity?
         let mut complaints = Vec::new();
         for grouped_accusation in accusations {
@@ -895,7 +975,7 @@ impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<'a, G> {
                 })
             }
         }
-        Ok(complaints)
+        complaints
     }
 }
 
@@ -928,7 +1008,7 @@ mod tests {
         let fetched_state =
             MembersFetchedState1::from_broadcast(&environment, 1, &[Some(broadcast2)]);
 
-        let phase_2 = m1.proceed(&environment, &fetched_state, &mut rng);
+        let phase_2 = m1.proceed(&fetched_state, &mut rng);
         if let Some(_data) = phase_2.1 {
             // broadcast the `data`
         }
@@ -969,7 +1049,7 @@ mod tests {
 
         // Given that there is a number of misbehaving parties higher than the threshold, proceeding
         // to step 2 should fail.
-        let phase_2_faked = m1.proceed(&environment, &fetched_state, &mut rng);
+        let phase_2_faked = m1.proceed(&fetched_state, &mut rng);
         assert_eq!(phase_2_faked.0, Err(DkgError::MisbehaviourHigherThreshold));
 
         // And there should be data to broadcast.
@@ -1024,7 +1104,7 @@ mod tests {
         // committed_coeffs, but party 2 submitted valid shares, phase 2 should be successful for
         // party 1, and there should be logs of misbehaviour only for party 3
 
-        let (phase_2, broadcast_data) = m1.proceed(&environment, &fetched_state, &mut rng);
+        let (phase_2, broadcast_data) = m1.proceed(&fetched_state, &mut rng);
 
         assert!(phase_2.is_ok());
         let unwrapped_phase = phase_2.unwrap();
@@ -1087,9 +1167,9 @@ mod tests {
 
         // Now we proceed to phase two.
         let (party_1_phase_2, _party_1_phase_2_broadcast_data) =
-            m1.proceed(&environment, &fetched_state_1, &mut rng);
+            m1.proceed(&fetched_state_1, &mut rng);
         let (party_2_phase_2, _party_2_phase_2_broadcast_data) =
-            m2.proceed(&environment, &fetched_state_2, &mut rng);
+            m2.proceed(&fetched_state_2, &mut rng);
 
         assert!(party_1_phase_2.is_ok());
         assert!(party_2_phase_2.is_ok());
@@ -1177,11 +1257,11 @@ mod tests {
 
         // Now we proceed to phase two.
         let (party_1_phase_2, party_1_phase_2_broadcast_data) =
-            m1.proceed(&environment, &fetched_state_1, &mut rng);
+            m1.proceed(&fetched_state_1, &mut rng);
         let (party_2_phase_2, party_2_phase_2_broadcast_data) =
-            m2.proceed(&environment, &fetched_state_2, &mut rng);
+            m2.proceed(&fetched_state_2, &mut rng);
         let (party_3_phase_2, party_3_phase_2_broadcast_data) =
-            m3.proceed(&environment, &fetched_state_3, &mut rng);
+            m3.proceed(&fetched_state_3, &mut rng);
 
         if party_1_phase_2_broadcast_data.is_some()
             || party_2_phase_2_broadcast_data.is_some()
@@ -1254,15 +1334,13 @@ mod tests {
             &fetched_state_3_phase_4,
             &broadcasts_phase_1,
             &broadcasts_phase_3,
-        )
-        .expect("it should be good complaint");
+        );
 
         let fetched_complaints_3_phase_4 = FetchedMisbehaviourComplaints::from_broadcasts_4(
             &fetched_state_1_phase_4,
             &broadcasts_phase_1,
             &broadcasts_phase_3,
-        )
-        .expect("it should be good complaint");
+        );
 
         // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
         // parties. Party 2 is no longer part of the protocol (even if its share will be part of the
@@ -1295,11 +1373,11 @@ mod tests {
         // of party two, they need to input the broadcast data.
         let (mk_1, sk_1) = party_1_phase_5
             .unwrap()
-            .finalise(Some(&fetched_data_1_phase_5))
+            .finalise(&fetched_data_1_phase_5)
             .unwrap();
         let (mk_3, sk_3) = party_3_phase_5
             .unwrap()
-            .finalise(Some(&fetched_data_3_phase_5))
+            .finalise(&fetched_data_3_phase_5)
             .unwrap();
 
         assert_eq!(mk_1, mk_3);
@@ -1361,11 +1439,11 @@ mod tests {
 
         // Now we proceed to phase two.
         let (party_1_phase_2, party_1_phase_2_broadcast_data) =
-            m1.proceed(&environment, &fetched_state_1, &mut rng);
+            m1.proceed(&fetched_state_1, &mut rng);
         let (party_2_phase_2, party_2_phase_2_broadcast_data) =
-            m2.proceed(&environment, &fetched_state_2, &mut rng);
+            m2.proceed(&fetched_state_2, &mut rng);
         let (party_3_phase_2, party_3_phase_2_broadcast_data) =
-            m3.proceed(&environment, &fetched_state_3, &mut rng);
+            m3.proceed(&fetched_state_3, &mut rng);
 
         if party_1_phase_2_broadcast_data.is_some()
             || party_2_phase_2_broadcast_data.is_some()
@@ -1419,9 +1497,9 @@ mod tests {
 
         // Finally, the different parties generate the master public key. No misbehaving parties, so
         // broadcast of phase 5 is None.
-        let (mk_1, sk_1) = party_1_phase_5?.finalise(None)?;
-        let (mk_2, sk_2) = party_2_phase_5?.finalise(None)?;
-        let (mk_3, _sk_3) = party_3_phase_5?.finalise(None)?;
+        let (mk_1, sk_1) = party_1_phase_5?.finalise(&[])?;
+        let (mk_2, sk_2) = party_2_phase_5?.finalise(&[])?;
+        let (mk_3, _sk_3) = party_3_phase_5?.finalise(&[])?;
 
         if mk_1 != mk_2 || mk_2 != mk_3 {
             return Err(DkgError::InconsistentMasterKey);

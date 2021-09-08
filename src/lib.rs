@@ -110,9 +110,9 @@
 //!         MembersFetchedState1::from_broadcast(&environment, 3, &[Some(broad_1), Some(broad_2)]);
 //!
 //!         // Now we proceed to phase two.
-//!         let (party_1_phase_2, party_1_phase_2_broadcast_data) = m1.proceed(&environment, &fetched_state_1, &mut rng);
-//!         let (party_2_phase_2, party_2_phase_2_broadcast_data) = m2.proceed(&environment, &fetched_state_2, &mut rng);
-//!         let (party_3_phase_2, party_3_phase_2_broadcast_data) = m3.proceed(&environment, &fetched_state_3, &mut rng);
+//!         let (party_1_phase_2, party_1_phase_2_broadcast_data) = m1.proceed(&fetched_state_1, &mut rng);
+//!         let (party_2_phase_2, party_2_phase_2_broadcast_data) = m2.proceed(&fetched_state_2, &mut rng);
+//!         let (party_3_phase_2, party_3_phase_2_broadcast_data) = m3.proceed(&fetched_state_3, &mut rng);
 //!
 //!         if party_1_phase_2_broadcast_data.is_some() || party_2_phase_2_broadcast_data.is_some() || party_3_phase_2_broadcast_data.is_some() {
 //!             // then they publish the data.
@@ -163,9 +163,9 @@
 //!         // Finally, the different parties generate the master public key. No misbehaving parties, so
 //!         // broadcast of phase 5 is None. This outputs the master public key and the secret shares.
 //!         // All three mk_i are equal.
-//!         let (mk_1, sk_1) = party_1_phase_5?.finalise(None)?;
-//!         let (mk_2, sk_2) = party_2_phase_5?.finalise(None)?;
-//!         let (mk_3, sk_3) = party_3_phase_5?.finalise(None)?;
+//!         let (mk_1, sk_1) = party_1_phase_5?.finalise(&[])?;
+//!         let (mk_2, sk_2) = party_2_phase_5?.finalise(&[])?;
+//!         let (mk_3, sk_3) = party_3_phase_5?.finalise(&[])?;
 //!
 //! #        if mk_1 != mk_2 || mk_2 != mk_3 {
 //! #            return Err(DkgError::InconsistentMasterKey);
