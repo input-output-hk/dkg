@@ -366,6 +366,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
     fn compute_qualified_set(&mut self, broadcast_complaints: &[BroadcastPhase2<G>]) {
         for broadcast in broadcast_complaints {
             for misbehaving_parties in &broadcast.misbehaving_parties {
+                // todo: we need to verify this.
                 self.state.qualified_set[misbehaving_parties.accused_index - 1] &= 0;
             }
         }
@@ -430,7 +431,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
 impl<G: PrimeGroupElement> Phases<G, Phase3> {
     /// Function that takes as input the broadcast data from the previous phase and proceeds to
     /// phase 4.
-    pub fn proceed_with_broadcast<R>(
+    pub fn proceed_with_broadcast(
         self,
         broadcast_messages: &[Option<BroadcastPhase3<G>>],
     ) -> (
@@ -534,7 +535,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
 impl<G: PrimeGroupElement> Phases<G, Phase4> {
     /// Function that takes as input the broadcast data from the previous phase and proceeds to
     /// phase 5.
-    pub fn proceed_with_broadcast<'a, R>(
+    pub fn proceed_with_broadcast<'a>(
         self,
         broadcast_messages: &[Option<BroadcastPhase4<G>>],
         // For qualified members, there should always be broadacst of phase 1. Otherwise the
@@ -642,7 +643,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
 impl<G: PrimeGroupElement> Phases<G, Phase5> {
     /// Function that takes as input the broadcast data from the previous phase and finalises
     /// the protocol.
-    pub fn finalise_with_broadcast<R>(
+    pub fn finalise_with_broadcast(
         self,
         broadcast_messages: &[Option<BroadcastPhase5<G>>],
     ) -> Result<(MasterPublicKey<G>, MemberSecretShare<G>), DkgError> {
@@ -1522,6 +1523,131 @@ mod tests {
     #[test]
     fn full_valid_run() {
         let run: Result<(), DkgError> = full_run();
+
+        assert!(run.is_ok());
+    }
+
+    fn simpler_API_full_run() -> Result<(), DkgError> {
+        let mut rng = OsRng;
+
+        let shared_string = b"Example of a shared string.".to_owned();
+
+        let threshold = 1;
+        let nr_members = 3;
+        let environment = Environment::init(threshold, nr_members, &shared_string);
+
+        let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
+        let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+
+        let (m1, broad_1) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+        let (m2, broad_2) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+        let (m3, broad_3) =
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+
+        let broadcasts_phase_1 = [&broad_1, &broad_2, &broad_3];
+
+        // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
+        // blockchain. All parties fetched the data from other parties and proceed to the
+        // next round.
+        let (party_1_phase_2, _party_1_phase_2_broadcast_data) =
+            m1.proceed_with_broadcast(&[Some(broad_2.clone()), Some(broad_3.clone())], &mut rng);
+        let (party_2_phase_2, _party_2_phase_2_broadcast_data) =
+            m2.proceed_with_broadcast(&[Some(broad_1.clone()), Some(broad_3.clone())], &mut rng);
+        let (party_3_phase_2, _party_3_phase_2_broadcast_data) =
+            m3.proceed_with_broadcast(&[Some(broad_1.clone()), Some(broad_2.clone())], &mut rng);
+
+        // We proceed to phase three (with no input because there was no misbehaving parties).
+        // todo: we want to input even if `None`.
+        let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2?.proceed(&[]);
+        let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.proceed(&[]);
+        let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.proceed(&[]);
+
+        // Parties broadcast data
+        let broadcasts_phase_3 = [
+            &party_1_broadcast_data_3,
+            &party_2_broadcast_data_3,
+            &party_3_broadcast_data_3,
+        ];
+
+        // We proceed to phase four with the fetched state of the previous phase.
+        let (party_1_phase_4, party_1_broadcast_data_4) =
+            party_1_phase_3?.proceed_with_broadcast(&[
+                party_2_broadcast_data_3.clone(),
+                party_3_broadcast_data_3.clone(),
+            ]);
+        let (party_2_phase_4, party_2_broadcast_data_4) =
+            party_2_phase_3?.proceed_with_broadcast(&[
+                party_1_broadcast_data_3.clone(),
+                party_3_broadcast_data_3.clone(),
+            ]);
+        let (party_3_phase_4, party_3_broadcast_data_4) =
+            party_3_phase_3?.proceed_with_broadcast(&[
+                party_1_broadcast_data_3.clone(),
+                party_2_broadcast_data_3.clone(),
+            ]);
+
+        // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
+        // parties. There is no misbehaving parties, so broadcast of phase 4 is None.
+        let (party_1_phase_5, party_1_broadcast_data_5) = party_1_phase_4?.proceed_with_broadcast(
+            &[
+                party_2_broadcast_data_4.clone(),
+                party_3_broadcast_data_4.clone(),
+            ],
+            &broadcasts_phase_1,
+            &broadcasts_phase_3,
+        );
+        let (party_2_phase_5, party_2_broadcast_data_5) = party_2_phase_4?.proceed_with_broadcast(
+            &[party_1_broadcast_data_4.clone(), party_3_broadcast_data_4],
+            &broadcasts_phase_1,
+            &broadcasts_phase_3,
+        );
+        let (party_3_phase_5, party_3_broadcast_data_5) = party_3_phase_4?.proceed_with_broadcast(
+            &[party_1_broadcast_data_4, party_2_broadcast_data_4],
+            &broadcasts_phase_1,
+            &broadcasts_phase_3,
+        );
+
+        // Finally, the different parties generate the master public key. No misbehaving parties, so
+        // broadcast of phase 5 is None.
+        let (mk_1, sk_1) = party_1_phase_5?.finalise_with_broadcast(&[
+            party_2_broadcast_data_5.clone(),
+            party_3_broadcast_data_5.clone(),
+        ])?;
+        let (mk_2, sk_2) = party_2_phase_5?.finalise_with_broadcast(&[
+            party_1_broadcast_data_5.clone(),
+            party_3_broadcast_data_5.clone(),
+        ])?;
+        let (mk_3, _sk_3) = party_3_phase_5?.finalise_with_broadcast(&[
+            party_1_broadcast_data_5.clone(),
+            party_2_broadcast_data_5.clone(),
+        ])?;
+
+        if mk_1 != mk_2 || mk_2 != mk_3 {
+            return Err(DkgError::InconsistentMasterKey);
+        }
+
+        // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
+        // the full secret key.
+        let indices = [Scalar::from_u64(1), Scalar::from_u64(2)];
+        let evaluated_points = [sk_1.0.sk, sk_2.0.sk];
+
+        let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
+        let interpolated_mk = MasterPublicKey(PublicKey {
+            pk: RistrettoPoint::generator() * master_key,
+        });
+
+        assert_eq!(interpolated_mk, mk_1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn simpler_API_run() {
+        let run: Result<(), DkgError> = simpler_API_full_run();
 
         assert!(run.is_ok());
     }
