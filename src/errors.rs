@@ -65,6 +65,10 @@ pub enum DkgError {
         error("User included in the qualified set should be dismissed")
     )]
     PartyShouldBeDisqualified,
+    /// This error occurs when the public key of a party is not in the list of the members'
+    /// public keys.
+    #[cfg_attr(feature = "std", error("Public key not found"))]
+    PublicKeyNotFound,
 }
 
 impl From<ProofError> for DkgError {

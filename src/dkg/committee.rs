@@ -126,13 +126,18 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         environment: &Environment<G>,
         secret_key: &MemberCommunicationKey<G>,
         committee_pks: &[MemberCommunicationPublicKey<G>],
-        my: usize,
     ) -> (Phases<G, Phase1>, BroadcastPhase1<G>) {
         assert_eq!(committee_pks.len(), environment.nr_members);
-        assert!(my <= environment.nr_members);
 
         let mut ordered_pks = committee_pks.clone().to_vec();
         ordered_pks.sort();
+
+        // indices start at zero
+        let my = ordered_pks
+            .iter()
+            .position(|x| *x == secret_key.to_public())
+            .expect("Own public key must be part of the committee_pks")
+            + 1;
 
         // We initialise the vector of committed and decrypted shares, to which we include
         // the shares of the party initialising
@@ -1086,9 +1091,9 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public()];
 
         let (m1, _broadcast1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (_m2, broadcast2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
 
         // Now, party one fetches the state of the other party, mainly party two
         let fetched_state =
@@ -1117,11 +1122,11 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, _broad_1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (_m2, mut broad_2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
         let (_m3, mut broad_3) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
         // Now, party one fetches invalid state of the other parties, mainly party two and three
         broad_2.committed_coefficients = vec![PrimeGroupElement::zero(); threshold + 1];
@@ -1172,11 +1177,11 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, broad_1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (_m2, broad_2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
         let (_m3, mut broad_3) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
         let broadcast_data_phase_1 = [
             Some(broad_1.clone()),
@@ -1242,11 +1247,11 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, broad_1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (m2, broad_2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
         let (_m3, broad_3) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
         let broadcast_data_phase_1 = [
             Some(broad_1.clone()),
@@ -1328,11 +1333,11 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, broad_1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (m2, broad_2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
         let (m3, broad_3) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
         // blockchain. All parties fetched the data.
@@ -1530,11 +1535,11 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, broad_1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (m2, broad_2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
         let (m3, broad_3) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
         let optional_broadcasts_phase_1 = [
             Some(broad_1.clone()),
@@ -1670,11 +1675,11 @@ mod tests {
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, broad_1) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (m2, broad_2) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
         let (m3, broad_3) =
-            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+            DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
         let broadcasts_phase_1 = [&broad_1, &broad_2, &broad_3];
 

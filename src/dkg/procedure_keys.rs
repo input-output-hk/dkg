@@ -24,6 +24,8 @@ pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>)
 pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 
 impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
+    /// We implement `Ord` for public keys to avoid having to handle indices in the DKG. This can
+    /// really be anything.
     fn cmp(&self, other: &Self) -> Ordering {
         let self_bytes = self.0.pk.to_bytes();
         let other_bytes = other.0.pk.to_bytes();
