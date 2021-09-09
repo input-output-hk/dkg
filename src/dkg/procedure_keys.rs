@@ -1,6 +1,7 @@
 /// todo: eventually https://internals.rust-lang.org/t/pre-rfc-module-level-generics/12015
 use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
 use crate::dkg::committee::EncryptedShares;
+use crate::errors::DkgError;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 use std::cmp::Ordering;
@@ -22,6 +23,18 @@ pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>)
 /// need a pre-existing keypair to communicate with other members.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
+
+impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
+    /// This function returns the index of `self` (from 1 to array.len()) with respect to the
+    /// input `array`.
+    pub fn get_index(&self, array: &[Self]) -> Result<usize, DkgError> {
+        Ok(array
+            .iter()
+            .position(|x| *x == self)
+            .ok_or(DkgError::PublicKeyNotFound)?
+            + 1)
+    }
+}
 
 impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
     /// We implement `Ord` for public keys to avoid having to handle indices in the DKG. This can
@@ -153,5 +166,24 @@ mod tests {
         let pk_comm_exp = sk_comm.to_public();
 
         assert_eq!(pk_comm, pk_comm_exp);
+    }
+
+    #[test]
+    fn get_index() {
+        let mut rng = OsRng;
+        let keypair_1 = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let pk_comm_1 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_1.public_key);
+
+        let keypair_2 = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let pk_comm_2 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_2.public_key);
+
+        let keypair_3 = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let pk_comm_3 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_3.public_key);
+
+        let array = [pk_comm_1, pk_comm_2, pk_comm_3];
+
+        assert_eq!(pk_comm_1.get_index(&array).unwrap(), 1);
+        assert_eq!(pk_comm_2.get_index(&array).unwrap(), 2);
+        assert_eq!(pk_comm_3.get_index(&array).unwrap(), 3);
     }
 }
