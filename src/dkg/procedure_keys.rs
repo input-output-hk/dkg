@@ -1,7 +1,6 @@
 /// todo: eventually https://internals.rust-lang.org/t/pre-rfc-module-level-generics/12015
 use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
 use crate::dkg::committee::EncryptedShares;
-use crate::errors::DkgError;
 use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
 use std::cmp::Ordering;
@@ -27,12 +26,14 @@ pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicK
 impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
     /// This function returns the index of `self` (from 1 to array.len()) with respect to the
     /// input `array`.
-    pub fn get_index(&self, array: &[Self]) -> Result<usize, DkgError> {
-        Ok(array
+    /// todo: is expect right here? feels unnecessary to have to handle the result all across the
+    /// code base. The check of using messages from participants should be done at a different layer.
+    pub fn get_index(&self, array: &[Self]) -> usize {
+        array
             .iter()
-            .position(|x| *x == self)
-            .ok_or(DkgError::PublicKeyNotFound)?
-            + 1)
+            .position(|x| x == self)
+            .expect("This party is not part of the participants. Its messaged should not be used.")
+            + 1
     }
 }
 
@@ -180,10 +181,10 @@ mod tests {
         let keypair_3 = Keypair::<RistrettoPoint>::generate(&mut rng);
         let pk_comm_3 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_3.public_key);
 
-        let array = [pk_comm_1, pk_comm_2, pk_comm_3];
+        let array = [pk_comm_1.clone(), pk_comm_2.clone(), pk_comm_3.clone()];
 
-        assert_eq!(pk_comm_1.get_index(&array).unwrap(), 1);
-        assert_eq!(pk_comm_2.get_index(&array).unwrap(), 2);
-        assert_eq!(pk_comm_3.get_index(&array).unwrap(), 3);
+        assert_eq!(pk_comm_1.get_index(&array), 1);
+        assert_eq!(pk_comm_2.get_index(&array), 2);
+        assert_eq!(pk_comm_3.get_index(&array), 3);
     }
 }

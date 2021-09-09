@@ -36,7 +36,7 @@ pub struct DecryptedShares<G: PrimeGroupElement> {
 /// complaint disqualifies the accused member.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MisbehavingPartiesRound1<G: PrimeGroupElement> {
-    pub(crate) accused_index: usize,
+    pub(crate) accused_pk: MemberCommunicationPublicKey<G>,
     pub(crate) accusation_error: DkgError,
     pub(crate) proof_accusation: ProofOfMisbehaviour<G>,
 }
@@ -102,7 +102,7 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
 /// member's index, and the two decrypted shares which are used to validate misbehaviour.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MisbehavingPartiesRound3<G: PrimeGroupElement> {
-    pub(crate) accused_index: usize,
+    pub(crate) accused_pk: MemberCommunicationPublicKey<G>,
     pub(crate) decrypted_share: <G as PrimeGroupElement>::CorrespondingScalar,
     pub(crate) decrypted_randomness: <G as PrimeGroupElement>::CorrespondingScalar,
 }
