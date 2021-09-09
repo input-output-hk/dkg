@@ -133,7 +133,7 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         ordered_pks.sort();
 
         // indices start at zero
-        let my = secret_key.to_public().get_index(&ordered_pks) + 1;
+        let my = secret_key.to_public().get_index(&ordered_pks);
 
         // We initialise the vector of committed and decrypted shares, to which we include
         // the shares of the party initialising
@@ -233,7 +233,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
         R: CryptoRng + RngCore,
     {
         assert_eq!(broadcaster_pks.len(), broadcast_messages.len());
-        assert_eq!(broadcaster_pks.len(), self.state.environment.nr_members);
+        assert_eq!(broadcaster_pks.len(), self.state.environment.nr_members - 1);
         let processed_data = MembersFetchedState1::from_broadcast(
             &self.state.environment,
             self.state.index,
@@ -1155,6 +1155,7 @@ mod tests {
         let (_m3, mut broad_3) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
+        let party_1_index = m1.state.index;
         // Now, party one fetches invalid state of the other parties, mainly party two and three
         broad_2.committed_coefficients = vec![PrimeGroupElement::zero(); threshold + 1];
         broad_3.committed_coefficients = vec![PrimeGroupElement::zero(); threshold + 1];
@@ -1181,11 +1182,11 @@ mod tests {
         let complaint_2 = broadcast_data.misbehaving_parties[1].clone();
 
         assert!(complaint_1
-            .verify(&environment, 1, &mc[0].clone(), &broad_2)
+            .verify(&environment, party_1_index, &mc[0].clone(), &broad_2)
             .is_ok());
 
         assert!(complaint_2
-            .verify(&environment, 1, &mc[0].clone(), &broad_3)
+            .verify(&environment, party_1_index, &mc[0].clone(), &broad_3)
             .is_ok());
     }
 
@@ -1208,8 +1209,10 @@ mod tests {
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
         let (_m2, broad_2) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
-        let (_m3, mut broad_3) =
+        let (m3, mut broad_3) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
+
+        let party_1_index = m1.state.index;
 
         let broadcast_data_phase_1 = [
             Some(broad_1.clone()),
@@ -1249,18 +1252,20 @@ mod tests {
         );
         // and the complaint should be valid
         assert!(bd.misbehaving_parties[0]
-            .verify(&environment, 1, &mc[0].clone(), &broad_3)
+            .verify(&environment, party_1_index, &mc[0].clone(), &broad_3)
             .is_ok());
 
-        // The qualified set should be [1, 1, 0]. Note: to validate the complaints, we need to input
-        // the broadcast data of phase 1.
+        // The qualified set should have zero in the position of party 3. Note: to validate the
+        // complaints, we need to input the broadcast data of phase 1.
         let (phase_3, _broadcast_data_3) = unwrapped_phase.proceed_with_broadcast(
             &[mc[1].clone(), mc[2].clone()],
             &[Some(bd), None],
             &broadcast_data_phase_1,
         );
         assert!(phase_3.is_ok());
-        assert_eq!(phase_3.unwrap().state.qualified_set, [1, 1, 0])
+        let mut expected_qualified_set = [1usize; 3];
+        expected_qualified_set[m3.state.index - 1] = 0;
+        assert_eq!(phase_3.unwrap().state.qualified_set, expected_qualified_set)
     }
 
     #[test]
@@ -1397,15 +1402,15 @@ mod tests {
         let fetched_state_1 = MembersFetchedState1::from_broadcast(
             &environment,
             m1.state.index,
-            &[mc[1].clone(), mc[2].clone()],
+            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
             &[Some(broad_2.clone()), Some(broad_3.clone())],
         );
 
         // Fetched state of party 2
         let fetched_state_2 = MembersFetchedState1::from_broadcast(
             &environment,
-            m1.state.index,
-            &[mc[0].clone(), mc[2].clone()],
+            m2.state.index,
+            &[mc[m1_index - 1].clone(), mc[m3_index - 1].clone()],
             &[Some(broad_1.clone()), Some(broad_3.clone())],
         );
 
@@ -1413,7 +1418,7 @@ mod tests {
         let fetched_state_3 = MembersFetchedState1::from_broadcast(
             &environment,
             m3.state.index,
-            &[mc[0].clone(), mc[1].clone().clone()],
+            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone().clone()],
             &[Some(broad_1.clone()), Some(broad_2.clone())],
         );
 
@@ -1457,7 +1462,7 @@ mod tests {
         let fetched_state_1_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
             m1_index,
-            &[mc[1].clone(), mc[2].clone()],
+            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
             &[
                 party_2_broadcast_data_3.clone(),
                 party_3_broadcast_data_3.clone(),
@@ -1468,7 +1473,7 @@ mod tests {
         let fetched_state_3_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
             m3_index,
-            &[mc[0].clone(), mc[1].clone()],
+            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone()],
             &[
                 party_1_broadcast_data_3.clone(),
                 party_2_broadcast_data_3.clone(),
@@ -1489,14 +1494,14 @@ mod tests {
         let fetched_state_1_phase_4 = MembersFetchedState4::from_broadcast(
             &environment,
             m1_index,
-            &[mc[1].clone(), mc[2].clone()],
+            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
             &[None, party_3_broadcast_data_4],
         );
 
         let fetched_state_3_phase_4 = MembersFetchedState4::from_broadcast(
             &environment,
             m3_index,
-            &[mc[0].clone(), mc[1].clone()],
+            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone()],
             &[party_1_broadcast_data_4, None],
         );
 
@@ -1534,14 +1539,14 @@ mod tests {
         let fetched_data_1_phase_5 = MembersFetchedState5::from_broadcast(
             &environment,
             m1_index,
-            &[mc[1].clone(), mc[2].clone()],
+            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
             &[None, party_3_broadcast_data_5],
         );
 
         let fetched_data_3_phase_5 = MembersFetchedState5::from_broadcast(
             &environment,
             m3_index,
-            &[mc[0].clone(), mc[1].clone()],
+            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone()],
             &[party_1_broadcast_data_5, None],
         );
 
@@ -1560,7 +1565,10 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
-        let indices = [Scalar::from_u64(1), Scalar::from_u64(3)];
+        let indices = [
+            Scalar::from_u64(m1_index as u64),
+            Scalar::from_u64(m3_index as u64),
+        ];
         let evaluated_points = [sk_1.0.sk, sk_3.0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
@@ -1744,6 +1752,10 @@ mod tests {
         let (m3, broad_3) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
+        let index_party_1 = m1.state.index;
+        let index_party_2 = m2.state.index;
+        let index_party_3 = m3.state.index;
+
         let broadcasts_phase_1 = [&broad_1, &broad_2, &broad_3];
 
         let optional_broadcasts_phase_1 = [
@@ -1864,7 +1876,10 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
-        let indices = [Scalar::from_u64(1), Scalar::from_u64(2)];
+        let indices = [
+            Scalar::from_u64(index_party_1 as u64),
+            Scalar::from_u64(index_party_2 as u64),
+        ];
         let evaluated_points = [sk_1.0.sk, sk_2.0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
