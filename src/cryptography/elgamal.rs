@@ -289,7 +289,8 @@ mod tests {
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar as RScalar;
 
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     fn zero() {
@@ -302,7 +303,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_point() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         for n in 1..5 {
             let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
@@ -315,7 +316,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         for n in 1..5 {
             let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
@@ -328,7 +329,7 @@ mod tests {
 
     #[test]
     fn symmetric_encrypt_decrypt() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
         let k = SecretKey::<RistrettoPoint>::generate(&mut rng);
         let k = Keypair::<RistrettoPoint>::from_secretkey(k);
 
@@ -342,7 +343,7 @@ mod tests {
 
     #[test]
     fn linear_ops_ctxts() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
         let m = RScalar::from_u64(24);

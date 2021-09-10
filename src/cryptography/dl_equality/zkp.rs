@@ -80,11 +80,12 @@ mod tests {
     use blake2::Blake2b;
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar;
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     pub fn it_works() {
-        let mut r: OsRng = OsRng;
+        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
 
         let dlog = Scalar::random(&mut r);
         let base_1 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);

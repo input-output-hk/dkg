@@ -69,11 +69,12 @@ where
 mod tests {
     use super::*;
     use curve25519_dalek::ristretto::RistrettoPoint;
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     pub fn it_works() {
-        let mut r = OsRng;
+        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
 
         let comm_key = MemberCommunicationKey::<RistrettoPoint>::new(&mut r);
         let comm_pkey = comm_key.to_public();

@@ -17,6 +17,7 @@ curve25519-dalek = "3"
 rand = "0.7"
 blake2 = "0.9"
 derive_more = "0.99"
+rand_chacha = "0.2"
 
 [package.metadata.docs.rs]
 rustdoc-args = [

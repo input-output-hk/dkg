@@ -155,11 +155,12 @@ mod tests {
     use super::*;
     use crate::cryptography::elgamal::Keypair;
     use curve25519_dalek::ristretto::RistrettoPoint;
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     fn from_fns() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
         let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
         let sk_comm = MemberCommunicationKey::<RistrettoPoint>(keypair.secret_key);
         let pk_comm = MemberCommunicationPublicKey::<RistrettoPoint>(keypair.public_key);
@@ -171,7 +172,7 @@ mod tests {
 
     #[test]
     fn get_index() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
         let keypair_1 = Keypair::<RistrettoPoint>::generate(&mut rng);
         let pk_comm_1 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_1.public_key);
 

@@ -50,6 +50,12 @@ pub struct Phases<G: PrimeGroupElement, Phase> {
     phase: PhantomData<Phase>,
 }
 
+impl<G: PrimeGroupElement, Phase> Phases<G, Phase> {
+    pub fn get_index(&self) -> usize {
+        self.state.index
+    }
+}
+
 impl<G: PrimeGroupElement, P> Debug for Phases<G, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Phase").field("state", &self.state).finish()
@@ -377,7 +383,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
         &mut self,
         broadcast_complaints: &[MembersFetchedState2<G>],
         broadcast_phase_1: &[Option<BroadcastPhase1<G>>],
-    ) -> Result<(), DkgError> {
+    ) {
         for broadcast in broadcast_complaints {
             let broadcaster_index = broadcast.sender_pk.get_index(&self.state.members_pks);
             for misbehaving_parties in &broadcast.accusations.misbehaving_parties {
@@ -403,7 +409,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
                 }
             }
         }
-        Ok(())
     }
 
     /// Proceed with input the broadcast data
@@ -507,7 +512,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
 
         let processed_data = MembersFetchedState3::from_broadcast(
             &self.state.environment,
-            self.state.index,
             broadcaster_pks,
             broadcast_messages,
         );
@@ -606,15 +610,15 @@ impl<G: PrimeGroupElement> Phases<G, Phase3> {
 impl<G: PrimeGroupElement> Phases<G, Phase4> {
     /// Function that takes as input the broadcast data from the previous phase and proceeds to
     /// phase 5.
-    pub fn proceed_with_broadcast<'a>(
+    pub fn proceed_with_broadcast(
         self,
         broadcaster_pks: &[MemberCommunicationPublicKey<G>],
         broadcast_messages: &[Option<BroadcastPhase4<G>>],
         // For qualified members, there should always be broadacst of phase 1. Otherwise the
         // party should not be qualified.
-        broadcasts_phase_1: &[&'a BroadcastPhase1<G>],
+        broadcasts_phase_1: &[Option<BroadcastPhase1<G>>],
         // A qualified member might not broadcast in phase 3.
-        broadcasts_phase_3: &[&'a Option<BroadcastPhase3<G>>],
+        broadcasts_phase_3: &[Option<BroadcastPhase3<G>>],
     ) -> (
         Result<Phases<G, Phase5>, DkgError>,
         Option<BroadcastPhase5<G>>,
@@ -626,7 +630,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
 
         let processed_data = MembersFetchedState4::from_broadcast(
             &self.state.environment,
-            self.state.index,
             broadcaster_pks,
             broadcast_messages,
         );
@@ -655,7 +658,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
     /// todo: revisit this function
     pub fn proceed(
         mut self,
-        broadcast_complaints: &[FetchedMisbehaviourComplaints<'_, G>],
+        broadcast_complaints: &[FetchedMisbehaviourComplaints<G>],
     ) -> (
         Result<Phases<G, Phase5>, DkgError>,
         Option<BroadcastPhase5<G>>,
@@ -669,11 +672,11 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
             let sender_index = fetched_complaints
                 .accuser_pk
                 .get_index(&self.state.members_pks);
-            // If accused party is disqualified, we ignore it
+            // If accusing party is disqualified, we ignore it
             if self.state.qualified_set[sender_index - 1] != 0 {
                 // Now we verify that the complaint is valid. If the broadcast of phase 3
                 // is None, then the complaint is valid.
-                if let Some(broadcast_phase_3) = fetched_complaints.accused_broadcast_phase_3 {
+                if let Some(broadcast_phase_3) = &fetched_complaints.accused_broadcast_phase_3 {
                     if fetched_complaints
                         .misbehaving_party
                         .verify(
@@ -681,6 +684,8 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
                             sender_index,
                             &fetched_complaints
                                 .accused_broadcast_phase_1
+                                .as_ref()
+                                .expect("Because it is a qualified member, it must have a broadcast of phase 1")
                                 .committed_coefficients,
                             &broadcast_phase_3.committed_coefficients,
                         )
@@ -692,11 +697,15 @@ impl<G: PrimeGroupElement> Phases<G, Phase4> {
                 }
                 // If the tests pass, then we disclose the shares of the misbehaving party,
                 // and include it in the data we will broadcast.
-                let indexed_shares = received_shares[sender_index - 1]
+                let misbehaving_index = fetched_complaints
+                    .misbehaving_party
+                    .accused_pk
+                    .get_index(&self.state.members_pks);
+                let indexed_shares = received_shares[misbehaving_index - 1]
                     .as_ref()
                     .expect("If it is part of honest members, their shares should be recorded");
-                reconstruct_shares[sender_index - 1] = Some(indexed_shares.decrypted_share);
-                self.state.reconstructable_set[sender_index - 1] |= 1;
+                reconstruct_shares[misbehaving_index - 1] = Some(indexed_shares.decrypted_share);
+                self.state.reconstructable_set[misbehaving_index - 1] |= 1;
             }
         }
 
@@ -728,7 +737,6 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
     ) -> Result<(MasterPublicKey<G>, MemberSecretShare<G>), DkgError> {
         let processed_data = MembersFetchedState5::from_broadcast(
             &self.state.environment,
-            self.state.index,
             broadcaster_pks,
             broadcast_messages,
         );
@@ -949,12 +957,10 @@ impl<G: PrimeGroupElement> MembersFetchedState3<G> {
     /// todo: change this requirement.
     pub fn from_broadcast(
         environment: &Environment<G>,
-        recipient_index: usize,
         broadcaster_pks: &[MemberCommunicationPublicKey<G>],
         broadcast_messages: &[Option<BroadcastPhase3<G>>],
     ) -> Vec<Self> {
         // We should have broadcasters for ALL other participants
-        assert!(recipient_index > 0 && recipient_index <= environment.nr_members);
         assert_eq!(broadcast_messages.len(), environment.nr_members - 1);
 
         let mut output = Vec::new();
@@ -994,13 +1000,13 @@ pub struct MembersFetchedState4<G: PrimeGroupElement> {
 }
 
 impl<G: PrimeGroupElement> MembersFetchedState4<G> {
+    /// Takes as input the environment, and the broadcast messages of phase 4 together with the
+    /// public keys. The order of the public keys and broadcast message must be consistent.
     pub fn from_broadcast(
         environment: &Environment<G>,
-        recipient_index: usize,
         broadcaster_pks: &[MemberCommunicationPublicKey<G>],
         broadcast_messages: &[Option<BroadcastPhase4<G>>],
     ) -> Vec<Self> {
-        assert!(recipient_index > 0 && recipient_index <= environment.nr_members);
         assert_eq!(broadcast_messages.len(), environment.nr_members - 1);
 
         let mut output = Vec::new();
@@ -1025,11 +1031,9 @@ pub struct MembersFetchedState5<G: PrimeGroupElement> {
 impl<G: PrimeGroupElement> MembersFetchedState5<G> {
     pub fn from_broadcast(
         environment: &Environment<G>,
-        recipient_index: usize,
         broadcaster_pks: &[MemberCommunicationPublicKey<G>],
         broadcast_messages: &[Option<BroadcastPhase5<G>>],
     ) -> Vec<Self> {
-        assert!(recipient_index > 0 && recipient_index <= environment.nr_members);
         assert_eq!(broadcast_messages.len(), environment.nr_members - 1);
 
         let mut output = Vec::new();
@@ -1046,17 +1050,14 @@ impl<G: PrimeGroupElement> MembersFetchedState5<G> {
 }
 
 #[derive(Clone)]
-// todo: ensure lifetime of 'a is as long as the struct
-pub struct FetchedMisbehaviourComplaints<'a, G: PrimeGroupElement> {
+pub struct FetchedMisbehaviourComplaints<G: PrimeGroupElement> {
     accuser_pk: MemberCommunicationPublicKey<G>,
     misbehaving_party: MisbehavingPartiesRound3<G>,
-    accused_broadcast_phase_1: &'a BroadcastPhase1<G>,
-    // A qualified member could not broadcast anything in phase 3, and that should
-    // be stored in the complaint.
-    accused_broadcast_phase_3: &'a Option<BroadcastPhase3<G>>,
+    accused_broadcast_phase_1: Option<BroadcastPhase1<G>>,
+    accused_broadcast_phase_3: Option<BroadcastPhase3<G>>,
 }
 
-impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<'a, G> {
+impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<G> {
     /// `broadcasts_phase_1` and `broadcasts_phase_3` need to be vectors with entries for every
     /// other participant. If a participant did not broadcast data in a particular phase, then
     /// we need to define it with `None`.
@@ -1064,9 +1065,9 @@ impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<'a, G> {
         accusations: &[MembersFetchedState4<G>],
         // For qualified members, there should always be broadcast of phase 1. Otherwise the
         // party should not be qualified.
-        broadcasts_phase_1: &[&'a BroadcastPhase1<G>],
+        broadcasts_phase_1: &[Option<BroadcastPhase1<G>>],
         // A qualified member might not broadcast in phase 3.
-        broadcasts_phase_3: &[&'a Option<BroadcastPhase3<G>>],
+        broadcasts_phase_3: &[Option<BroadcastPhase3<G>>],
         // We need these to determine the index of each accused PK
         members_pks: &[MemberCommunicationPublicKey<G>],
     ) -> Vec<Self> {
@@ -1078,10 +1079,8 @@ impl<'a, G: PrimeGroupElement> FetchedMisbehaviourComplaints<'a, G> {
                 complaints.push(FetchedMisbehaviourComplaints {
                     accuser_pk: grouped_accusation.sender_pk.clone(),
                     misbehaving_party: single_accusation.clone(),
-                    // If the accused party did not broadcast any data during phase 1 it should
-                    // be disqualified.
-                    accused_broadcast_phase_1: broadcasts_phase_1[accused_index - 1],
-                    accused_broadcast_phase_3: broadcasts_phase_3[accused_index - 1],
+                    accused_broadcast_phase_1: broadcasts_phase_1[accused_index - 1].clone(),
+                    accused_broadcast_phase_3: broadcasts_phase_3[accused_index - 1].clone(),
                 })
             }
         }
@@ -1094,11 +1093,12 @@ mod tests {
     use super::*;
 
     use curve25519_dalek::ristretto::RistrettoPoint;
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     fn valid_phase_2() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
         let threshold = 0;
@@ -1133,7 +1133,7 @@ mod tests {
 
     #[test]
     fn invalid_phase_2() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
         let threshold = 1;
@@ -1141,11 +1141,8 @@ mod tests {
         let environment = Environment::init(threshold, nr_members, &shared_string);
 
         let mc1 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
-        let pk1 = mc1.to_public();
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
-        let pk2 = mc2.to_public();
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
-        let pk3 = mc3.to_public();
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 
         let (m1, _broad_1) =
@@ -1192,7 +1189,7 @@ mod tests {
 
     #[test]
     fn misbehaving_parties() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
 
@@ -1270,7 +1267,7 @@ mod tests {
 
     #[test]
     fn phase_4_tests() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
 
@@ -1361,7 +1358,7 @@ mod tests {
 
     #[test]
     fn misbehaviour_phase_4() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
 
@@ -1373,6 +1370,8 @@ mod tests {
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+        let mut ordered_pks = mc.clone();
+        ordered_pks.sort();
 
         let (m1, broad_1) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
@@ -1386,23 +1385,16 @@ mod tests {
 
         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
         // blockchain. All parties fetched the data.
-        let broadcasts_phase_1 = [&broad_1, &broad_2, &broad_3];
-        // The reason why we have option and non optional arrays, is because in the first rounds
-        // it might be that parties do not submit broadcast of phase one. However, at some point of
-        // the game, when handling qualified members, we need to ensure that there is a broadcast of
-        // phase 1
-        // todo: we are probably messing the indices somewhere. Really confusing.
-        let optional_broadcasts_phase_1 = [
-            Some(broad_1.clone()),
-            Some(broad_2.clone()),
-            Some(broad_3.clone()),
-        ];
+        let mut broadcasts_phase_1 = [None, None, None];
+        broadcasts_phase_1[m1_index - 1] = Some(broad_1.clone());
+        broadcasts_phase_1[m2_index - 1] = Some(broad_2.clone());
+        broadcasts_phase_1[m3_index - 1] = Some(broad_3.clone());
 
         // Fetched state of party 1
         let fetched_state_1 = MembersFetchedState1::from_broadcast(
             &environment,
             m1.state.index,
-            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
+            &[mc[1].clone(), mc[2].clone()],
             &[Some(broad_2.clone()), Some(broad_3.clone())],
         );
 
@@ -1410,7 +1402,7 @@ mod tests {
         let fetched_state_2 = MembersFetchedState1::from_broadcast(
             &environment,
             m2.state.index,
-            &[mc[m1_index - 1].clone(), mc[m3_index - 1].clone()],
+            &[mc[0].clone(), mc[2].clone()],
             &[Some(broad_1.clone()), Some(broad_3.clone())],
         );
 
@@ -1418,7 +1410,7 @@ mod tests {
         let fetched_state_3 = MembersFetchedState1::from_broadcast(
             &environment,
             m3.state.index,
-            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone().clone()],
+            &[mc[0].clone(), mc[1].clone().clone()],
             &[Some(broad_1.clone()), Some(broad_2.clone())],
         );
 
@@ -1438,31 +1430,25 @@ mod tests {
         }
 
         // We proceed to phase three (with no input because there was no misbehaving parties).
-        let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2
-            .unwrap()
-            .proceed(&[], &optional_broadcasts_phase_1);
-        let (_party_2_phase_3, _) = party_2_phase_2
-            .unwrap()
-            .proceed(&[], &optional_broadcasts_phase_1);
-        let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2
-            .unwrap()
-            .proceed(&[], &optional_broadcasts_phase_1);
+        let (party_1_phase_3, party_1_broadcast_data_3) =
+            party_1_phase_2.unwrap().proceed(&[], &broadcasts_phase_1);
+        let (_party_2_phase_3, _) = party_2_phase_2.unwrap().proceed(&[], &broadcasts_phase_1);
+        let (party_3_phase_3, party_3_broadcast_data_3) =
+            party_3_phase_2.unwrap().proceed(&[], &broadcasts_phase_1);
 
         // We mimic that party 2 misbehaves and doesn't broadcast data.
         let party_2_broadcast_data_3 = None;
 
         // Parties broadcast data
-        let broadcasts_phase_3 = [
-            &party_1_broadcast_data_3,
-            &party_2_broadcast_data_3,
-            &party_3_broadcast_data_3,
-        ];
+        let mut broadcasts_phase_3 = [None, None, None];
+        broadcasts_phase_3[m1_index - 1] = party_1_broadcast_data_3.clone();
+        broadcasts_phase_3[m2_index - 1] = party_2_broadcast_data_3.clone();
+        broadcasts_phase_3[m3_index - 1] = party_3_broadcast_data_3.clone();
 
         // Fetched state of party 1.
         let fetched_state_1_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
-            m1_index,
-            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
+            &[mc[1].clone(), mc[2].clone()],
             &[
                 party_2_broadcast_data_3.clone(),
                 party_3_broadcast_data_3.clone(),
@@ -1472,8 +1458,7 @@ mod tests {
         // Fetched state of party 3.
         let fetched_state_3_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
-            m3_index,
-            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone()],
+            &[mc[0].clone(), mc[1].clone()],
             &[
                 party_1_broadcast_data_3.clone(),
                 party_2_broadcast_data_3.clone(),
@@ -1493,32 +1478,31 @@ mod tests {
         // Party 1 and 3 fetches it.
         let fetched_state_1_phase_4 = MembersFetchedState4::from_broadcast(
             &environment,
-            m1_index,
-            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
+            &[mc[1].clone(), mc[2].clone()],
             &[None, party_3_broadcast_data_4],
         );
 
         let fetched_state_3_phase_4 = MembersFetchedState4::from_broadcast(
             &environment,
-            m3_index,
-            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone()],
+            &[mc[0].clone(), mc[1].clone()],
             &[party_1_broadcast_data_4, None],
         );
 
         // Then, party 1 and 3 need to fetch the complaint, use the broadcast data of party_2 from
         // phase 1 and phase 3, and verify the complaint.
+        // Here we need an ordered list of pks because it is supposed to be an internal function
         let fetched_complaints_1_phase_4 = FetchedMisbehaviourComplaints::from_broadcasts_4(
-            &fetched_state_3_phase_4,
-            &broadcasts_phase_1,
-            &broadcasts_phase_3,
-            &mc,
-        );
-
-        let fetched_complaints_3_phase_4 = FetchedMisbehaviourComplaints::from_broadcasts_4(
             &fetched_state_1_phase_4,
             &broadcasts_phase_1,
             &broadcasts_phase_3,
-            &mc,
+            &ordered_pks,
+        );
+
+        let fetched_complaints_3_phase_4 = FetchedMisbehaviourComplaints::from_broadcasts_4(
+            &fetched_state_3_phase_4,
+            &broadcasts_phase_1,
+            &broadcasts_phase_3,
+            &ordered_pks,
         );
 
         // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
@@ -1538,15 +1522,13 @@ mod tests {
         // This data is fetched by both parties
         let fetched_data_1_phase_5 = MembersFetchedState5::from_broadcast(
             &environment,
-            m1_index,
-            &[mc[m2_index - 1].clone(), mc[m3_index - 1].clone()],
+            &[mc[1].clone(), mc[2].clone()],
             &[None, party_3_broadcast_data_5],
         );
 
         let fetched_data_3_phase_5 = MembersFetchedState5::from_broadcast(
             &environment,
-            m3_index,
-            &[mc[m1_index - 1].clone(), mc[m2_index - 1].clone()],
+            &[mc[0].clone(), mc[1].clone()],
             &[party_1_broadcast_data_5, None],
         );
 
@@ -1580,7 +1562,7 @@ mod tests {
     }
 
     fn full_run() -> Result<(), DkgError> {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
 
@@ -1592,6 +1574,8 @@ mod tests {
         let mc2 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc3 = MemberCommunicationKey::<RistrettoPoint>::new(&mut rng);
         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
+        let mut ordered_pks = mc.clone();
+        ordered_pks.sort();
 
         let (m1, broad_1) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
@@ -1603,11 +1587,10 @@ mod tests {
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
         let m3_index = m3.state.index;
 
-        let optional_broadcasts_phase_1 = [
-            Some(broad_1.clone()),
-            Some(broad_2.clone()),
-            Some(broad_3.clone()),
-        ];
+        let mut broadcasts_phase_1 = [None, None, None];
+        broadcasts_phase_1[m1_index - 1] = Some(broad_1.clone());
+        broadcasts_phase_1[m2_index - 1] = Some(broad_2.clone());
+        broadcasts_phase_1[m3_index - 1] = Some(broad_3.clone());
 
         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
         // blockchain. All parties fetched the data.
@@ -1631,7 +1614,7 @@ mod tests {
         // Fetched state of party 3
         let fetched_state_3 = MembersFetchedState1::from_broadcast(
             &environment,
-            m1.state.index,
+            m3.state.index,
             &[mc[0].clone(), mc[1].clone()],
             &[Some(broad_1), Some(broad_2)],
         );
@@ -1653,16 +1636,15 @@ mod tests {
 
         // We proceed to phase three (with no input because there was no misbehaving parties).
         let (party_1_phase_3, party_1_broadcast_data_3) =
-            party_1_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+            party_1_phase_2?.proceed(&[], &broadcasts_phase_1);
         let (party_2_phase_3, party_2_broadcast_data_3) =
-            party_2_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+            party_2_phase_2?.proceed(&[], &broadcasts_phase_1);
         let (party_3_phase_3, party_3_broadcast_data_3) =
-            party_3_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+            party_3_phase_2?.proceed(&[], &broadcasts_phase_1);
 
         // Fetched state of party 1.
         let fetched_state_1_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
-            m1_index,
             &[mc[1].clone(), mc[2].clone()],
             &[
                 party_2_broadcast_data_3.clone(),
@@ -1673,7 +1655,6 @@ mod tests {
         // Fetched state of party 2.
         let fetched_state_2_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
-            m2_index,
             &[mc[0].clone(), mc[2].clone()],
             &[party_1_broadcast_data_3.clone(), party_3_broadcast_data_3],
         );
@@ -1681,7 +1662,6 @@ mod tests {
         // Fetched state of party 3.
         let fetched_state_3_phase_3 = MembersFetchedState3::from_broadcast(
             &environment,
-            m3_index,
             &[mc[0].clone(), mc[1].clone()],
             &[party_1_broadcast_data_3, party_2_broadcast_data_3],
         );
@@ -1712,7 +1692,10 @@ mod tests {
 
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
-        let indices = [Scalar::from_u64(1), Scalar::from_u64(2)];
+        let indices = [
+            Scalar::from_u64(m1_index as u64),
+            Scalar::from_u64(m2_index as u64),
+        ];
         let evaluated_points = [sk_1.0.sk, sk_2.0.sk];
 
         let master_key = lagrange_interpolation(Scalar::zero(), &evaluated_points, &indices);
@@ -1732,7 +1715,7 @@ mod tests {
     }
 
     fn simpler_API_full_run() -> Result<(), DkgError> {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let shared_string = b"Example of a shared string.".to_owned();
 
@@ -1752,17 +1735,14 @@ mod tests {
         let (m3, broad_3) =
             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 
-        let index_party_1 = m1.state.index;
-        let index_party_2 = m2.state.index;
-        let index_party_3 = m3.state.index;
+        let m1_index = m1.state.index;
+        let m2_index = m2.state.index;
+        let m3_index = m3.state.index;
 
-        let broadcasts_phase_1 = [&broad_1, &broad_2, &broad_3];
-
-        let optional_broadcasts_phase_1 = [
-            Some(broad_1.clone()),
-            Some(broad_2.clone()),
-            Some(broad_3.clone()),
-        ];
+        let mut broadcasts_phase_1 = [None, None, None];
+        broadcasts_phase_1[m1_index - 1] = Some(broad_1.clone());
+        broadcasts_phase_1[m2_index - 1] = Some(broad_2.clone());
+        broadcasts_phase_1[m3_index - 1] = Some(broad_3.clone());
 
         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
         // blockchain. All parties fetched the data from other parties and proceed to the
@@ -1786,18 +1766,17 @@ mod tests {
         // We proceed to phase three (with no input because there was no misbehaving parties).
         // todo: we want to input even if `None`.
         let (party_1_phase_3, party_1_broadcast_data_3) =
-            party_1_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+            party_1_phase_2?.proceed(&[], &broadcasts_phase_1);
         let (party_2_phase_3, party_2_broadcast_data_3) =
-            party_2_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+            party_2_phase_2?.proceed(&[], &broadcasts_phase_1);
         let (party_3_phase_3, party_3_broadcast_data_3) =
-            party_3_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+            party_3_phase_2?.proceed(&[], &broadcasts_phase_1);
 
         // Parties broadcast data
-        let broadcasts_phase_3 = [
-            &party_1_broadcast_data_3,
-            &party_2_broadcast_data_3,
-            &party_3_broadcast_data_3,
-        ];
+        let mut broadcasts_phase_3 = [None, None, None];
+        broadcasts_phase_3[m1_index - 1] = party_1_broadcast_data_3.clone();
+        broadcasts_phase_3[m2_index - 1] = party_2_broadcast_data_3.clone();
+        broadcasts_phase_3[m3_index - 1] = party_3_broadcast_data_3.clone();
 
         // We proceed to phase four with the fetched state of the previous phase.
         let (party_1_phase_4, party_1_broadcast_data_4) = party_1_phase_3?.proceed_with_broadcast(
@@ -1877,8 +1856,8 @@ mod tests {
         // And finally, lets test if the lagrange interpolation of two secret shares resconstructs
         // the full secret key.
         let indices = [
-            Scalar::from_u64(index_party_1 as u64),
-            Scalar::from_u64(index_party_2 as u64),
+            Scalar::from_u64(m1_index as u64),
+            Scalar::from_u64(m2_index as u64),
         ];
         let evaluated_points = [sk_1.0.sk, sk_2.0.sk];
 

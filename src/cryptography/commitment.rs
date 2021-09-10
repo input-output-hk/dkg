@@ -9,7 +9,7 @@ pub struct CommitmentKey<G: PrimeGroupElement> {
 }
 
 impl<G: PrimeGroupElement> CommitmentKey<G> {
-    /// Generate a new random commitment key by hashin the input
+    /// Generate a new random commitment key by hashing the input
     pub fn generate(bytes: &[u8]) -> Self {
         CommitmentKey::<G> {
             h: G::hash_to_group::<Blake2b>(bytes),
@@ -70,11 +70,12 @@ mod tests {
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar as RScalar;
 
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     fn commit_and_open() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
         let commitment_key = CommitmentKey::<RistrettoPoint>::generate(&[0u8]);
         let message = RScalar::random(&mut rng);
         let (comm, rand) = commitment_key.commit(&message, &mut rng);
