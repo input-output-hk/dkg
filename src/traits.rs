@@ -92,6 +92,7 @@
 //!     type Item = GroupElementWrapper;
 //!     type CorrespondingScalar = ScalarWrapper;
 //!     type EncodingSize = U32;
+//!     type CorrespondingScalarSize = U32;
 //!
 //!     fn generator() -> Self {
 //!         Self(RISTRETTO_BASEPOINT_POINT)
@@ -133,7 +134,8 @@
 //! [curve25519_dalek]: https://doc.dalek.rs/curve25519_dalek/index.html
 
 use blake2::Digest;
-use generic_array::typenum::U64;
+use generic_array::typenum::bit::{B0, B1};
+use generic_array::typenum::{UInt, UTerm, Unsigned, U64};
 use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::Debug;
@@ -151,7 +153,7 @@ pub trait Scalar:
     + AddAssign<Self>
 {
     type Item;
-    type EncodingSize: ArrayLength<u8> + Add;
+    type EncodingSize: ArrayLength<u8> + Add + Mul;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 
@@ -219,7 +221,8 @@ pub trait PrimeGroupElement:
     /// https://github.com/rust-lang/rust/issues/60551
     ///
     /// Defined as future work for now.
-    type EncodingSize: ArrayLength<u8> + Add;
+    type EncodingSize: ArrayLength<u8> + Add + Mul<UInt<UInt<UTerm, B1>, B0>>;
+    type CorrespondingScalarSize: ArrayLength<u8> + Add + Unsigned;
 
     fn generator() -> Self;
 

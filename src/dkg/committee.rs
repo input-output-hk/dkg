@@ -823,7 +823,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
                 // Now we check if we have sufficient shares to reconstruct the secret. Note that
                 // the size of `indices` and that of `evaluated_points` is the same.
                 if indices.len() < self.state.environment.threshold {
-                    return Err(DkgError::InsufficientSharesForRecovery(i));
+                    return Err(DkgError::InsufficientSharesForRecovery);
                 }
 
                 // If we have sufficient, then we interpolate at zero

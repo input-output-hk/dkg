@@ -201,6 +201,16 @@ impl<G: PrimeGroupElement> SymmetricKey<G> {
         key.apply_keystream(&mut dat);
         dat
     }
+
+    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+        self.group_repr.to_bytes()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        Some(Self {
+            group_repr: G::from_bytes(bytes)?,
+        })
+    }
 }
 
 impl<G: PrimeGroupElement> Keypair<G> {

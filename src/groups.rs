@@ -56,6 +56,7 @@ impl PrimeGroupElement for RistrettoPoint {
     type Item = RistrettoPoint;
     type CorrespondingScalar = RScalar;
     type EncodingSize = U32;
+    type CorrespondingScalarSize = U32;
 
     fn generator() -> Self {
         RISTRETTO_BASEPOINT_POINT

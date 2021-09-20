@@ -18,6 +18,9 @@ use generic_array::ArrayLength;
 use rand_core::{CryptoRng, RngCore};
 use std::ops::Add;
 
+/// Byte size of the proof of Misbehaviour
+pub type CorrectHybridDecrKeyZkpSize<G> = ProofBytes<G>;
+
 /// Proof of correct decryption.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Zkp<G: PrimeGroupElement> {
