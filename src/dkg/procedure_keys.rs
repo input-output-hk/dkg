@@ -2,6 +2,7 @@
 use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
 use crate::dkg::committee::EncryptedShares;
 use crate::traits::{PrimeGroupElement, Scalar};
+use generic_array::GenericArray;
 use rand_core::{CryptoRng, RngCore};
 use std::cmp::Ordering;
 
@@ -23,44 +24,6 @@ pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>)
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 
-impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
-    /// This function returns the index of `self` (from 1 to array.len()) with respect to the
-    /// input `array`.
-    /// todo: is expect right here? feels unnecessary to have to handle the result all across the
-    /// code base. The check of using messages from participants should be done at a different layer.
-    pub fn get_index(&self, array: &[Self]) -> usize {
-        array
-            .iter()
-            .position(|x| x == self)
-            .expect("This party is not part of the participants. Its messaged should not be used.")
-            + 1
-    }
-}
-
-impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
-    /// We implement `Ord` for public keys to avoid having to handle indices in the DKG. This can
-    /// really be anything.
-    fn cmp(&self, other: &Self) -> Ordering {
-        let self_bytes = self.0.pk.to_bytes();
-        let other_bytes = other.0.pk.to_bytes();
-
-        let mut ordering = Ordering::Equal;
-        for (s, o) in self_bytes.iter().zip(other_bytes.iter()) {
-            ordering = s.cmp(o);
-            if ordering != Ordering::Equal {
-                break;
-            }
-        }
-        ordering
-    }
-}
-
-impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// The overall committee public key used for everyone to encrypt their vote to.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MasterPublicKey<G: PrimeGroupElement>(pub PublicKey<G>);
@@ -73,11 +36,16 @@ impl<G: PrimeGroupElement> MemberSecretShare<G> {
     }
 }
 
-// impl<G: PrimeGroupElement> MemberPublicShare<G> {
-//     pub fn to_bytes(&self) -> Vec<u8> {
-//         self.0.to_bytes()
-//     }
-// }
+impl<G: PrimeGroupElement> MemberPublicShare<G> {
+    /// Convert `MemberPublicShare` to its byte representation
+    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+        self.0.to_bytes()
+    }
+    /// Try to convert a `MemberPublicShare` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        PublicKey::from_bytes(bytes).map(Self)
+    }
+}
 
 impl<G: PrimeGroupElement> From<PublicKey<G>> for MemberPublicShare<G> {
     fn from(pk: PublicKey<G>) -> MemberPublicShare<G> {
@@ -132,6 +100,49 @@ impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
     {
         self.0.hybrid_encrypt(message, rng)
     }
+    /// This function returns the index of `self` (from 1 to array.len()) with respect to the
+    /// input `array`.
+    /// todo: is expect right here? feels unnecessary to have to handle the result all across the
+    /// code base. The check of using messages from participants should be done at a different layer.
+    pub fn get_index(&self, array: &[Self]) -> usize {
+        array
+            .iter()
+            .position(|x| x == self)
+            .expect("This party is not part of the participants. Its messaged should not be used.")
+            + 1
+    }
+    /// Convert `MemberCommunicationPublicKey` to its byte representation
+    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+        self.0.to_bytes()
+    }
+    /// Try to convert a `MemberCommunicationPublicKey` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        PublicKey::from_bytes(bytes).map(Self)
+    }
+}
+
+impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
+    /// We implement `Ord` for public keys to avoid having to handle indices in the DKG. This can
+    /// really be anything.
+    fn cmp(&self, other: &Self) -> Ordering {
+        let self_bytes = self.0.pk.to_bytes();
+        let other_bytes = other.0.pk.to_bytes();
+
+        let mut ordering = Ordering::Equal;
+        for (s, o) in self_bytes.iter().zip(other_bytes.iter()) {
+            ordering = s.cmp(o);
+            if ordering != Ordering::Equal {
+                break;
+            }
+        }
+        ordering
+    }
+}
+
+impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<G: PrimeGroupElement> MasterPublicKey<G> {
@@ -147,6 +158,15 @@ impl<G: PrimeGroupElement> MasterPublicKey<G> {
     #[doc(hidden)]
     pub fn as_raw(&self) -> &PublicKey<G> {
         &self.0
+    }
+
+    /// Convert `MasterPublicKey` to its byte representation
+    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+        self.0.to_bytes()
+    }
+    /// Try to convert a `MasterPublicKey` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        PublicKey::from_bytes(bytes).map(Self)
     }
 }
 

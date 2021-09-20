@@ -151,7 +151,7 @@ pub trait Scalar:
     + AddAssign<Self>
 {
     type Item;
-    type EncodingSize: ArrayLength<u8>;
+    type EncodingSize: ArrayLength<u8> + Add;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 

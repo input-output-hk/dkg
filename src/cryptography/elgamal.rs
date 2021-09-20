@@ -8,6 +8,7 @@ use crate::traits::{PrimeGroupElement, Scalar};
 use blake2::{Blake2b, Digest};
 use chacha20::cipher::{NewCipher, StreamCipher};
 use chacha20::ChaCha20;
+use generic_array::typenum::{Sum, Unsigned, U32};
 use generic_array::GenericArray;
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Mul, Sub};
@@ -143,6 +144,15 @@ impl<G: PrimeGroupElement> PublicKey<G> {
         let e2 = symmetric_key.process(message).into_boxed_slice();
         HybridCiphertext { e1, e2 }
     }
+
+    /// Convert `PublicKey` to its byte representation
+    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+        self.pk.to_bytes()
+    }
+    /// Try to convert a `PublicKey` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        G::from_bytes(bytes).map(|pk| Self { pk })
+    }
 }
 
 impl<G: PrimeGroupElement> SecretKey<G> {
@@ -227,6 +237,26 @@ impl<G: PrimeGroupElement> Ciphertext<G> {
 
     pub fn elements(&self) -> (&G, &G) {
         (&self.e1, &self.e2)
+    }
+
+    pub fn to_bytes(&self) -> GenericArray<u8, Sum<G::EncodingSize, G::EncodingSize>> {
+        let mut ctxts = self.e1.to_bytes().to_vec();
+        ctxts.extend_from_slice(&self.e1.to_bytes().as_slice());
+        let &array = GenericArray::from_slice(&ctxts);
+
+        array
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let size: usize = <G::EncodingSize as Unsigned>::to_usize();
+        if bytes.len() != 2 * size {
+            return None;
+        }
+
+        let e1 = G::from_bytes(&bytes[..size])?;
+        let e2 = G::from_bytes(&bytes[size..])?;
+
+        Some(Self { e1, e2 })
     }
 }
 
@@ -361,5 +391,18 @@ mod tests {
         let cipher_7 = &cipher * &RScalar::from_u64(2);
         let r_7 = keypair.secret_key.decrypt_point(&cipher_7);
         assert_eq!(RScalar::from_u64(48) * RistrettoPoint::generator(), r_7);
+    }
+
+    #[test]
+    fn key_serialisation() {
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+        let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
+
+        let serialised = keypair.public_key.to_bytes();
+        let deserialised = PublicKey::from_bytes(&serialised);
+
+        assert!(deserialised.is_some());
+        let unwraped = deserialised.unwrap();
+        assert_eq!(unwraped, keypair.public_key);
     }
 }
