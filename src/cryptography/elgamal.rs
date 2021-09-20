@@ -8,8 +8,8 @@ use crate::traits::{PrimeGroupElement, Scalar};
 use blake2::{Blake2b, Digest};
 use chacha20::cipher::{NewCipher, StreamCipher};
 use chacha20::ChaCha20;
-use generic_array::typenum::{Sum, Unsigned, U32};
-use generic_array::GenericArray;
+use generic_array::typenum::{Sum, Unsigned};
+use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Mul, Sub};
 
@@ -239,12 +239,13 @@ impl<G: PrimeGroupElement> Ciphertext<G> {
         (&self.e1, &self.e2)
     }
 
-    pub fn to_bytes(&self) -> GenericArray<u8, Sum<G::EncodingSize, G::EncodingSize>> {
+    pub fn to_bytes(&self) -> GenericArray<u8, Sum<G::EncodingSize, G::EncodingSize>>
+    where
+        <<G as PrimeGroupElement>::EncodingSize as Add>::Output: ArrayLength<u8>,
+    {
         let mut ctxts = self.e1.to_bytes().to_vec();
-        ctxts.extend_from_slice(&self.e1.to_bytes().as_slice());
-        let &array = GenericArray::from_slice(&ctxts);
-
-        array
+        ctxts.extend_from_slice(&self.e2.to_bytes().as_slice());
+        GenericArray::from_slice(&ctxts).clone()
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -402,7 +403,23 @@ mod tests {
         let deserialised = PublicKey::from_bytes(&serialised);
 
         assert!(deserialised.is_some());
-        let unwraped = deserialised.unwrap();
-        assert_eq!(unwraped, keypair.public_key);
+        let unwrapped = deserialised.unwrap();
+        assert_eq!(unwrapped, keypair.public_key);
+    }
+
+    #[test]
+    fn ctxts_serialisation() {
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+
+        let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let m = RScalar::from_u64(24);
+        let cipher = keypair.public_key.encrypt(&m, &mut rng);
+
+        let serialised = cipher.to_bytes();
+        let deserialised = Ciphertext::from_bytes(&serialised);
+
+        assert!(deserialised.is_some());
+        let unwrapped = deserialised.unwrap();
+        assert_eq!(cipher, unwrapped);
     }
 }

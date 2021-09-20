@@ -219,7 +219,7 @@ pub trait PrimeGroupElement:
     /// https://github.com/rust-lang/rust/issues/60551
     ///
     /// Defined as future work for now.
-    type EncodingSize: ArrayLength<u8>;
+    type EncodingSize: ArrayLength<u8> + Add;
 
     fn generator() -> Self;
 
