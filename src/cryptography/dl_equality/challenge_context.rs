@@ -16,7 +16,10 @@ impl ChallengeContext {
         base_2: &G,
         point_1: &G,
         point_2: &G,
-    ) -> Self {
+    ) -> Self
+    where
+        [(); G::SIZE]: ,
+    {
         let mut ctx: Vec<u8> = Vec::new();
         ctx.extend_from_slice(&base_1.to_bytes());
         ctx.extend_from_slice(&base_2.to_bytes());
@@ -33,7 +36,10 @@ impl ChallengeContext {
         &mut self,
         a1: &G,
         a2: &G,
-    ) -> G::CorrespondingScalar {
+    ) -> G::CorrespondingScalar
+    where
+        [(); G::SIZE]: ,
+    {
         self.0.extend_from_slice(&a1.to_bytes());
         self.0.extend_from_slice(&a2.to_bytes());
 

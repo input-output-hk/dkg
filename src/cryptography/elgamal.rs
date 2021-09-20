@@ -8,8 +8,7 @@ use crate::traits::{PrimeGroupElement, Scalar};
 use blake2::{Blake2b, Digest};
 use chacha20::cipher::{NewCipher, StreamCipher};
 use chacha20::ChaCha20;
-use generic_array::typenum::{Sum, Unsigned};
-use generic_array::{ArrayLength, GenericArray};
+use generic_array::GenericArray;
 use rand_core::{CryptoRng, RngCore};
 use std::ops::{Add, Mul, Sub};
 
@@ -135,6 +134,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
     pub(crate) fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
     where
         R: RngCore + CryptoRng,
+        [(); G::SIZE]: ,
     {
         let encryption_randomness = G::CorrespondingScalar::random(rng);
         let symmetric_key = SymmetricKey {
@@ -146,7 +146,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
     }
 
     /// Convert `PublicKey` to its byte representation
-    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
         self.pk.to_bytes()
     }
     /// Try to convert a `PublicKey` from a byte array
@@ -179,7 +179,10 @@ impl<G: PrimeGroupElement> SecretKey<G> {
 
     #[allow(dead_code)]
     /// Decrypt a message using hybrid decryption
-    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
+    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8>
+    where
+        [(); G::SIZE]: ,
+    {
         self.recover_symmetric_key(ciphertext)
             .process(&ciphertext.e2)
     }
@@ -187,7 +190,10 @@ impl<G: PrimeGroupElement> SecretKey<G> {
 
 impl<G: PrimeGroupElement> SymmetricKey<G> {
     // Initialise encryption, by hashing the group element
-    fn initialise_encryption(&self) -> ChaCha20 {
+    fn initialise_encryption(&self) -> ChaCha20
+    where
+        [(); G::SIZE]: ,
+    {
         let h = Blake2b::new().chain(&self.group_repr.to_bytes()).finalize();
         let key = GenericArray::from_slice(&h[0..32]);
         let nonce = GenericArray::from_slice(&h[32..44]);
@@ -195,14 +201,17 @@ impl<G: PrimeGroupElement> SymmetricKey<G> {
     }
 
     // Encrypt/decrypt a message using the symmetric key
-    pub fn process(&self, m: &[u8]) -> Vec<u8> {
+    pub fn process(&self, m: &[u8]) -> Vec<u8>
+    where
+        [(); G::SIZE]: ,
+    {
         let mut key = self.initialise_encryption();
         let mut dat = m.to_vec();
         key.apply_keystream(&mut dat);
         dat
     }
 
-    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
         self.group_repr.to_bytes()
     }
 
@@ -249,17 +258,18 @@ impl<G: PrimeGroupElement> Ciphertext<G> {
         (&self.e1, &self.e2)
     }
 
-    pub fn to_bytes(&self) -> GenericArray<u8, Sum<G::EncodingSize, G::EncodingSize>>
+    pub fn to_bytes(&self) -> [u8; 2 * G::SIZE]
     where
-        <<G as PrimeGroupElement>::EncodingSize as Add>::Output: ArrayLength<u8>,
+        [(); G::SIZE]: ,
     {
-        let mut ctxts = self.e1.to_bytes().to_vec();
-        ctxts.extend_from_slice(&self.e2.to_bytes().as_slice());
-        GenericArray::from_slice(&ctxts).clone()
+        let mut ctxts = [0u8; 2 * G::SIZE];
+        ctxts[..G::SIZE].copy_from_slice(&self.e1.to_bytes());
+        ctxts[G::SIZE..].copy_from_slice(&self.e2.to_bytes());
+        ctxts
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let size: usize = <G::EncodingSize as Unsigned>::to_usize();
+        let size: usize = G::SIZE;
         if bytes.len() != 2 * size {
             return None;
         }

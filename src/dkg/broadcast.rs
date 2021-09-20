@@ -7,10 +7,7 @@ use crate::dkg::committee::Environment;
 use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
 use crate::errors::DkgError;
 use crate::traits::{PrimeGroupElement, Scalar};
-use generic_array::typenum::Sum;
-use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
-use std::ops::Add;
 
 /// Struct that contains the index of the receiver, and its two encrypted
 /// shares. In particular, `encrypted_share`//( = \texttt{Enc}(f_i(\texttt{recipient_index}))//),
@@ -56,7 +53,10 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
         accuser_index: usize,
         accuser_pk: &MemberCommunicationPublicKey<G>,
         accused_broadcast: &BroadcastPhase1<G>,
-    ) -> Result<(), DkgError> {
+    ) -> Result<(), DkgError>
+    where
+        [(); G::SIZE]: ,
+    {
         let respective_shares = accused_broadcast.encrypted_shares[accuser_index - 1].clone();
         // First we verify the proof
         self.proof_accusation.verify(
@@ -196,6 +196,7 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
     ) -> Self
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         let symm_key_1 = secret_key
             .0
@@ -234,7 +235,10 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         encrypted_shares: &EncryptedShares<G>,
         committed_coeffs: Vec<G>,
         accuser_index: usize,
-    ) -> Result<(), DkgError> {
+    ) -> Result<(), DkgError>
+    where
+        [(); G::SIZE]: ,
+    {
         let proof1_is_err = self
             .proof_decryption_1
             .verify(
@@ -283,26 +287,4 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
 
         Err(DkgError::InvalidProofOfMisbehaviour)
     }
-
-    pub fn to_bytes(&self) -> ProofOfMisbehaviourSize<G>
-    where
-        <<G as PrimeGroupElement>::EncodingSize as Add>::Output:
-            Add<<<G as PrimeGroupElement>::CorrespondingScalarSize as Add>::Output>,
-        <<<G as PrimeGroupElement>::EncodingSize as Add>::Output as Add<
-            <<G as PrimeGroupElement>::CorrespondingScalarSize as Add>::Output,
-        >>::Output: ArrayLength<u8>,
-    {
-        GenericArray::default()
-    }
 }
-
-pub type ProofOfMisbehaviourSize<G> = GenericArray<
-    u8,
-    Sum<
-        Sum<<G as PrimeGroupElement>::EncodingSize, <G as PrimeGroupElement>::EncodingSize>,
-        Sum<
-            <G as PrimeGroupElement>::CorrespondingScalarSize,
-            <G as PrimeGroupElement>::CorrespondingScalarSize,
-        >,
-    >,
->;

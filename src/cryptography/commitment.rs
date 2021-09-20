@@ -1,6 +1,5 @@
 use crate::traits::{PrimeGroupElement, Scalar};
 use blake2::Blake2b;
-use generic_array::GenericArray;
 use rand_core::{CryptoRng, RngCore};
 
 /// Pedersen Commitment key
@@ -57,7 +56,7 @@ impl<G: PrimeGroupElement> CommitmentKey<G> {
         commitment == &other
     }
 
-    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
         self.h.to_bytes()
     }
 

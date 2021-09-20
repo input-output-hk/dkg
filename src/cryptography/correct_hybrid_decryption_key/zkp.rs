@@ -8,18 +8,12 @@
 //!
 //! which is a proof of discrete log equality. We can therefore prove
 //! correct decryption using a proof of discrete log equality.
-use crate::cryptography::dl_equality::{DleqZkp, ProofBytes};
+use crate::cryptography::dl_equality::DleqZkp;
 use crate::cryptography::elgamal::{HybridCiphertext, SymmetricKey};
 use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
 use crate::errors::ProofError;
-use crate::traits;
-use crate::traits::PrimeGroupElement;
-use generic_array::ArrayLength;
+use crate::traits::{PrimeGroupElement, Scalar};
 use rand_core::{CryptoRng, RngCore};
-use std::ops::Add;
-
-/// Byte size of the proof of Misbehaviour
-pub type CorrectHybridDecrKeyZkpSize<G> = ProofBytes<G>;
 
 /// Proof of correct decryption.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +35,7 @@ where
     ) -> Self
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         let hybrid_dec_key_proof = DleqZkp::generate(
             &G::generator(),
@@ -61,7 +56,10 @@ where
         c: &HybridCiphertext<G>,
         symmetric_key: &SymmetricKey<G>,
         pk: &MemberCommunicationPublicKey<G>,
-    ) -> Result<(), ProofError> {
+    ) -> Result<(), ProofError>
+    where
+        [(); G::SIZE]: ,
+    {
         self.hybrid_dec_key_proof.verify(
             &G::generator(),
             &c.e1,
@@ -70,9 +68,9 @@ where
         )
     }
 
-    pub fn to_bytes(&self) -> ProofBytes<G>
-        where
-            <<<G as PrimeGroupElement>::CorrespondingScalar as traits::Scalar>::EncodingSize as Add>::Output: ArrayLength<u8>
+    pub fn to_bytes(&self) -> [u8; 2 * G::SIZE]
+    where
+        [(); <G::CorrespondingScalar as Scalar>::SIZE]: ,
     {
         self.hybrid_dec_key_proof.to_bytes()
     }

@@ -93,6 +93,7 @@
 //!     type CorrespondingScalar = ScalarWrapper;
 //!     type EncodingSize = U32;
 //!     type CorrespondingScalarSize = U32;
+//!     const SIZE: usize = 32;
 //!
 //!     fn generator() -> Self {
 //!         Self(RISTRETTO_BASEPOINT_POINT)
@@ -106,10 +107,8 @@
 //!         GroupElementWrapper(RistrettoPoint::hash_from_bytes::<H>(input))
 //!     }
 //!
-//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
-//!         let mut array = GenericArray::default();
-//!         array.copy_from_slice(&self.0.compress().to_bytes()[..]);
-//!         array
+//!     fn to_bytes(&self) -> [u8; Self::SIZE] {
+//!         self.0.compress().to_bytes()
 //!     }
 //!
 //!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -134,9 +133,7 @@
 //! [curve25519_dalek]: https://doc.dalek.rs/curve25519_dalek/index.html
 
 use blake2::Digest;
-use generic_array::typenum::bit::{B0, B1};
-use generic_array::typenum::{UInt, UTerm, Unsigned, U64};
-use generic_array::{ArrayLength, GenericArray};
+use generic_array::typenum::U64;
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
@@ -153,7 +150,7 @@ pub trait Scalar:
     + AddAssign<Self>
 {
     type Item;
-    type EncodingSize: ArrayLength<u8> + Add + Mul;
+    const SIZE: usize;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 
@@ -161,7 +158,7 @@ pub trait Scalar:
 
     fn from_u64(scalar: u64) -> Self;
 
-    fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
+    fn to_bytes(&self) -> [u8; Self::SIZE];
 
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 
@@ -221,8 +218,8 @@ pub trait PrimeGroupElement:
     /// https://github.com/rust-lang/rust/issues/60551
     ///
     /// Defined as future work for now.
-    type EncodingSize: ArrayLength<u8> + Add + Mul<UInt<UInt<UTerm, B1>, B0>>;
-    type CorrespondingScalarSize: ArrayLength<u8> + Add + Unsigned;
+    const SIZE: usize;
+    const ASSOCIATED_SCALAR_SIZE: usize;
 
     fn generator() -> Self;
 
@@ -230,7 +227,7 @@ pub trait PrimeGroupElement:
 
     fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self;
 
-    fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
+    fn to_bytes(&self) -> [u8; Self::SIZE];
 
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 

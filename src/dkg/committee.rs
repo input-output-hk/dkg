@@ -138,7 +138,11 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
         environment: &Environment<G>,
         secret_key: &MemberCommunicationKey<G>,
         committee_pks: &[MemberCommunicationPublicKey<G>],
-    ) -> (Phases<G, Phase1>, BroadcastPhase1<G>) {
+    ) -> (Phases<G, Phase1>, BroadcastPhase1<G>)
+    where
+        [(); <G::CorrespondingScalar as Scalar>::SIZE]: ,
+        [(); G::SIZE]: ,
+    {
         assert_eq!(committee_pks.len(), environment.nr_members);
 
         let mut ordered_pks = committee_pks.to_vec();
@@ -243,6 +247,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
     )
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         assert_eq!(broadcaster_pks.len(), broadcast_messages.len());
         assert_eq!(broadcaster_pks.len(), self.state.environment.nr_members - 1);
@@ -284,6 +289,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase1> {
     )
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         let mut qualified_set = self.state.qualified_set.clone();
         let mut misbehaving_parties: Vec<MisbehavingPartiesRound1<G>> = Vec::new();
@@ -388,7 +394,9 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
         &mut self,
         broadcast_complaints: &[MembersFetchedState2<G>],
         broadcast_phase_1: &[Option<BroadcastPhase1<G>>],
-    ) {
+    ) where
+        [(); G::SIZE]: ,
+    {
         for broadcast in broadcast_complaints {
             let broadcaster_index = broadcast.sender_pk.get_index(&self.state.members_pks);
             for misbehaving_parties in &broadcast.accusations.misbehaving_parties {
@@ -425,7 +433,10 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
     ) -> (
         Result<Phases<G, Phase3>, DkgError>,
         Option<BroadcastPhase3<G>>,
-    ) {
+    )
+    where
+        [(); G::SIZE]: ,
+    {
         // make sure we've taken broadcast from all members
         assert_eq!(broadcast_messages.len(), broadcast_round_1.len() - 1);
         assert_eq!(broadcast_messages.len(), broadcaster_pks.len());
@@ -460,7 +471,10 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
     ) -> (
         Result<Phases<G, Phase3>, DkgError>,
         Option<BroadcastPhase3<G>>,
-    ) {
+    )
+    where
+        [(); G::SIZE]: ,
+    {
         self.compute_qualified_set(broadcast_complaints, broadcast_round_1);
         if self.state.qualified_set.len() < self.state.environment.threshold + 1 {
             return (Err(DkgError::MisbehaviourHigherThreshold), None);

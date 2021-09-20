@@ -11,20 +11,8 @@
 #![allow(clippy::many_single_char_names)]
 use super::challenge_context::ChallengeContext;
 use crate::errors::ProofError;
-use crate::traits;
 use crate::traits::{PrimeGroupElement, Scalar};
-use generic_array::typenum::{Sum, Unsigned};
-use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
-use std::ops::Add;
-
-pub type ProofBytes<G> = GenericArray<
-    u8,
-    Sum<
-        <<G as PrimeGroupElement>::CorrespondingScalar as Scalar>::EncodingSize,
-        <<G as PrimeGroupElement>::CorrespondingScalar as Scalar>::EncodingSize,
-    >,
->;
 
 /// Proof of correct decryption.
 /// Note: if the goal is to reduce the size of a proof, it is better to store the challenge
@@ -48,6 +36,7 @@ impl<G: PrimeGroupElement> Zkp<G> {
     ) -> Self
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         let w = G::CorrespondingScalar::random(rng);
         let announcement_1 = *base_1 * w;
@@ -63,13 +52,10 @@ impl<G: PrimeGroupElement> Zkp<G> {
     }
 
     /// Verify a DLEQ proof
-    pub fn verify(
-        &self,
-        base_1: &G,
-        base_2: &G,
-        point_1: &G,
-        point_2: &G,
-    ) -> Result<(), ProofError> {
+    pub fn verify(&self, base_1: &G, base_2: &G, point_1: &G, point_2: &G) -> Result<(), ProofError>
+    where
+        [(); G::SIZE]: ,
+    {
         let r1 = *base_1 * self.response;
         let r2 = *base_2 * self.response;
         let announcement_1 = r1 - (*point_1 * self.challenge);
@@ -85,24 +71,22 @@ impl<G: PrimeGroupElement> Zkp<G> {
         }
     }
 
-    pub fn to_bytes(
-        &self,
-    ) -> ProofBytes<G>
-        where
-            <<<G as PrimeGroupElement>::CorrespondingScalar as traits::Scalar>::EncodingSize as Add>::Output: ArrayLength<u8>
-
+    pub fn to_bytes(&self) -> [u8; 2 * G::SIZE]
+    where
+        [(); <G::CorrespondingScalar as Scalar>::SIZE]: ,
     {
-        let mut bytes = self.challenge.to_bytes().to_vec();
-        bytes.extend_from_slice(self.response.to_bytes().as_slice());
-        GenericArray::from_slice(&bytes).clone()
+        let mut bytes = [0u8; 2 * G::SIZE];
+        bytes.copy_from_slice(&self.challenge.to_bytes());
+        bytes.copy_from_slice(&self.response.to_bytes());
+        bytes
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let size: usize =
-            <<G::CorrespondingScalar as Scalar>::EncodingSize as Unsigned>::to_usize();
+        let size = G::ASSOCIATED_SCALAR_SIZE;
         if bytes.len() != 2 * size {
             return None;
         }
+
         let challenge = Scalar::from_bytes(&bytes[..size])?;
         let response = Scalar::from_bytes(&bytes[size..])?;
 

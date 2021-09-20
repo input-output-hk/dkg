@@ -4,13 +4,12 @@ use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar as RScalar;
 use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
-use generic_array::typenum::{U32, U64};
-use generic_array::GenericArray;
+use generic_array::typenum::U64;
 use rand_core::{CryptoRng, RngCore};
 
 impl Scalar for RScalar {
     type Item = RScalar;
-    type EncodingSize = U32;
+    const SIZE: usize = 32;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
         RScalar::random(rng)
@@ -20,10 +19,8 @@ impl Scalar for RScalar {
         RScalar::from(scalar)
     }
 
-    fn to_bytes(&self) -> GenericArray<u8, U32> {
-        let mut array = GenericArray::default();
-        array.copy_from_slice(&self.to_bytes()[..]);
-        array
+    fn to_bytes(&self) -> [u8; Self::SIZE] {
+        self.to_bytes()
     }
 
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -55,8 +52,8 @@ impl Scalar for RScalar {
 impl PrimeGroupElement for RistrettoPoint {
     type Item = RistrettoPoint;
     type CorrespondingScalar = RScalar;
-    type EncodingSize = U32;
-    type CorrespondingScalarSize = U32;
+    const SIZE: usize = 32;
+    const ASSOCIATED_SCALAR_SIZE: usize = 32;
 
     fn generator() -> Self {
         RISTRETTO_BASEPOINT_POINT
@@ -70,10 +67,8 @@ impl PrimeGroupElement for RistrettoPoint {
         RistrettoPoint::hash_from_bytes::<H>(input)
     }
 
-    fn to_bytes(&self) -> GenericArray<u8, U32> {
-        let mut array = GenericArray::default();
-        array.copy_from_slice(&self.compress().to_bytes()[..]);
-        array
+    fn to_bytes(&self) -> [u8; Self::SIZE] {
+        self.compress().to_bytes()
     }
 
     fn from_bytes(bytes: &[u8]) -> Option<Self> {

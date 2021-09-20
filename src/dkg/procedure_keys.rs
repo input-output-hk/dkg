@@ -2,7 +2,6 @@
 use crate::cryptography::elgamal::{HybridCiphertext, PublicKey, SecretKey};
 use crate::dkg::committee::EncryptedShares;
 use crate::traits::{PrimeGroupElement, Scalar};
-use generic_array::GenericArray;
 use rand_core::{CryptoRng, RngCore};
 use std::cmp::Ordering;
 
@@ -38,7 +37,7 @@ impl<G: PrimeGroupElement> MemberSecretShare<G> {
 
 impl<G: PrimeGroupElement> MemberPublicShare<G> {
     /// Convert `MemberPublicShare` to its byte representation
-    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
         self.0.to_bytes()
     }
     /// Try to convert a `MemberPublicShare` from a byte array
@@ -65,7 +64,10 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
         })
     }
 
-    pub fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
+    pub fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8>
+    where
+        [(); G::SIZE]: ,
+    {
         self.0.hybrid_decrypt(ciphertext)
     }
 
@@ -75,7 +77,10 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
     ) -> (
         Option<G::CorrespondingScalar>,
         Option<G::CorrespondingScalar>,
-    ) {
+    )
+    where
+        [(); G::SIZE]: ,
+    {
         let decrypted_share = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.hybrid_decrypt(&shares.encrypted_share),
         );
@@ -97,6 +102,7 @@ impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
     pub fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
     where
         R: RngCore + CryptoRng,
+        [(); G::SIZE]: ,
     {
         self.0.hybrid_encrypt(message, rng)
     }
@@ -112,7 +118,7 @@ impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
             + 1
     }
     /// Convert `MemberCommunicationPublicKey` to its byte representation
-    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
         self.0.to_bytes()
     }
     /// Try to convert a `MemberCommunicationPublicKey` from a byte array
@@ -121,12 +127,15 @@ impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
     }
 }
 
-impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
+impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G>
+where
+    [(); G::SIZE]: ,
+{
     /// We implement `Ord` for public keys to avoid having to handle indices in the DKG. This can
     /// really be anything.
     fn cmp(&self, other: &Self) -> Ordering {
-        let self_bytes = self.0.pk.to_bytes();
-        let other_bytes = other.0.pk.to_bytes();
+        let self_bytes = self.0.to_bytes();
+        let other_bytes = other.0.to_bytes();
 
         let mut ordering = Ordering::Equal;
         for (s, o) in self_bytes.iter().zip(other_bytes.iter()) {
@@ -139,7 +148,10 @@ impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
     }
 }
 
-impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G> {
+impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G>
+where
+    [(); G::SIZE]: ,
+{
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
@@ -161,7 +173,7 @@ impl<G: PrimeGroupElement> MasterPublicKey<G> {
     }
 
     /// Convert `MasterPublicKey` to its byte representation
-    pub fn to_bytes(&self) -> GenericArray<u8, G::EncodingSize> {
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
         self.0.to_bytes()
     }
     /// Try to convert a `MasterPublicKey` from a byte array

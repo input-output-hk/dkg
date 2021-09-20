@@ -198,6 +198,8 @@
 
 #![warn(unused, future_incompatible, nonstandard_style, rust_2018_idioms)]
 #![allow(non_snake_case)]
+#![feature(const_generics)]
+#![feature(const_evaluatable_checked)]
 
 #[macro_use]
 mod macros;
