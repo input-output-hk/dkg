@@ -36,9 +36,9 @@ pub struct DecryptedShares<G: PrimeGroupElement> {
 /// complaint disqualifies the accused member.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MisbehavingPartiesRound1<G: PrimeGroupElement> {
-    pub(crate) accused_pk: MemberCommunicationPublicKey<G>,
-    pub(crate) accusation_error: DkgError,
-    pub(crate) proof_accusation: ProofOfMisbehaviour<G>,
+    pub accused_pk: MemberCommunicationPublicKey<G>,
+    pub accusation_error: DkgError,
+    pub proof_accusation: ProofOfMisbehaviour<G>,
 }
 
 impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {

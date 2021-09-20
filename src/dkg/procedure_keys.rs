@@ -63,7 +63,7 @@ impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G> {
 
 /// The overall committee public key used for everyone to encrypt their vote to.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MasterPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
+pub struct MasterPublicKey<G: PrimeGroupElement>(pub PublicKey<G>);
 
 impl<G: PrimeGroupElement> MemberSecretShare<G> {
     pub fn to_public(&self) -> MemberPublicShare<G> {

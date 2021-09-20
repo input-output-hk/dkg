@@ -66,7 +66,7 @@
 //! # use DKG::errors::DkgError;
 //! use rand_core::OsRng;
 //! use curve25519_dalek::ristretto::{RistrettoPoint};
-//! # use DKG::dkg::committee::{MembersFetchedState1, MembersFetchedState3};
+//! # use DKG::dkg::fetched_state::{MembersFetchedState1, MembersFetchedState3};
 //!
 //! # fn full_run() -> Result<(), DkgError> {
 //!         let mut rng = OsRng;
