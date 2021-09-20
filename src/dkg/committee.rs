@@ -141,7 +141,7 @@ impl<G: PrimeGroupElement> Phases<G, Initialise> {
     ) -> (Phases<G, Phase1>, BroadcastPhase1<G>) {
         assert_eq!(committee_pks.len(), environment.nr_members);
 
-        let mut ordered_pks = committee_pks.clone().to_vec();
+        let mut ordered_pks = committee_pks.to_vec();
         ordered_pks.sort();
 
         // indices start at zero

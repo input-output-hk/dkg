@@ -112,8 +112,8 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
         &self,
         environment: &Environment<G>,
         accuser_index: usize,
-        randomised_committed_coefficients: &Vec<G>,
-        committed_coefficients: &Vec<G>,
+        randomised_committed_coefficients: &[G],
+        committed_coefficients: &[G],
     ) -> Result<(), DkgError> {
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
@@ -121,7 +121,7 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
 
         let failing_check = G::generator() * self.decrypted_share;
         let failing_multi_scalar =
-            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients.clone());
+            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients.to_owned());
 
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
@@ -130,7 +130,7 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
             + environment.commitment_key.h * self.decrypted_randomness;
         let passing_multi_scalar = G::vartime_multiscalar_multiplication(
             index_pow,
-            randomised_committed_coefficients.clone(),
+            randomised_committed_coefficients.to_owned(),
         );
 
         // todo: invalid complaints should be interpreted as misbehaviour from qualified members?

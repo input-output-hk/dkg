@@ -8,14 +8,13 @@
 //!
 //! which is a proof of discrete log equality. We can therefore prove
 //! correct decryption using a proof of discrete log equality.
-use crate::cryptography::dl_equality::DleqZkp;
+use crate::cryptography::dl_equality::{DleqZkp, ProofBytes};
 use crate::cryptography::elgamal::{HybridCiphertext, SymmetricKey};
 use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
 use crate::errors::ProofError;
 use crate::traits;
-use crate::traits::{PrimeGroupElement, Scalar};
-use generic_array::typenum::Sum;
-use generic_array::{ArrayLength, GenericArray};
+use crate::traits::PrimeGroupElement;
+use generic_array::ArrayLength;
 use rand_core::{CryptoRng, RngCore};
 use std::ops::Add;
 
@@ -68,13 +67,7 @@ where
         )
     }
 
-    pub fn to_bytes(&self) -> GenericArray<
-        u8,
-        Sum<
-            <G::CorrespondingScalar as Scalar>::EncodingSize,
-            <G::CorrespondingScalar as Scalar>::EncodingSize,
-        >,
-    >
+    pub fn to_bytes(&self) -> ProofBytes<G>
         where
             <<<G as PrimeGroupElement>::CorrespondingScalar as traits::Scalar>::EncodingSize as Add>::Output: ArrayLength<u8>
     {

@@ -18,6 +18,14 @@ use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::ops::Add;
 
+pub type ProofBytes<G> = GenericArray<
+    u8,
+    Sum<
+        <<G as PrimeGroupElement>::CorrespondingScalar as Scalar>::EncodingSize,
+        <<G as PrimeGroupElement>::CorrespondingScalar as Scalar>::EncodingSize,
+    >,
+>;
+
 /// Proof of correct decryption.
 /// Note: if the goal is to reduce the size of a proof, it is better to store the challenge
 /// and the response. If on the other hand we want to allow for batch verification of
@@ -79,13 +87,7 @@ impl<G: PrimeGroupElement> Zkp<G> {
 
     pub fn to_bytes(
         &self,
-    ) -> GenericArray<
-        u8,
-        Sum<
-            <G::CorrespondingScalar as Scalar>::EncodingSize,
-            <G::CorrespondingScalar as Scalar>::EncodingSize,
-        >,
-    >
+    ) -> ProofBytes<G>
         where
             <<<G as PrimeGroupElement>::CorrespondingScalar as traits::Scalar>::EncodingSize as Add>::Output: ArrayLength<u8>
 
