@@ -198,6 +198,9 @@
 
 #![warn(unused, future_incompatible, nonstandard_style, rust_2018_idioms)]
 #![allow(non_snake_case)]
+// Needed for the const generics. See issue #76560 <https://github.com/rust-lang/rust/issues/76560>
+// and issue #44580 <https://github.com/rust-lang/rust/issues/44580>  for more information.
+#![allow(incomplete_features)]
 #![feature(const_generics)]
 #![feature(const_evaluatable_checked)]
 

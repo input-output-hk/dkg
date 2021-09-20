@@ -53,7 +53,6 @@ impl PrimeGroupElement for RistrettoPoint {
     type Item = RistrettoPoint;
     type CorrespondingScalar = RScalar;
     const SIZE: usize = 32;
-    const ASSOCIATED_SCALAR_SIZE: usize = 32;
 
     fn generator() -> Self {
         RISTRETTO_BASEPOINT_POINT

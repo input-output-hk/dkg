@@ -445,11 +445,11 @@ fn misbehaviour_phase_4() {
 
     // Finally, the different parties generate the master public key. To recreate the shares
     // of party two, they need to input the broadcast data.
-    let (mk_1, sk_1) = party_1_phase_5
+    let (mk_1, _sk_1) = party_1_phase_5
         .unwrap()
         .finalise(&fetched_data_1_phase_5)
         .unwrap();
-    let (mk_3, sk_3) = party_3_phase_5
+    let (mk_3, _sk_3) = party_3_phase_5
         .unwrap()
         .finalise(&fetched_data_3_phase_5)
         .unwrap();
@@ -590,8 +590,8 @@ fn full_run() -> Result<(), DkgError> {
 
     // Finally, the different parties generate the master public key. No misbehaving parties, so
     // broadcast of phase 5 is None.
-    let (mk_1, sk_1) = party_1_phase_5?.finalise(&[])?;
-    let (mk_2, sk_2) = party_2_phase_5?.finalise(&[])?;
+    let (mk_1, _sk_1) = party_1_phase_5?.finalise(&[])?;
+    let (mk_2, _sk_2) = party_2_phase_5?.finalise(&[])?;
     let (mk_3, _sk_3) = party_3_phase_5?.finalise(&[])?;
 
     if mk_1 != mk_2 || mk_2 != mk_3 {
@@ -735,14 +735,14 @@ fn simpler_api_full_run() -> Result<(), DkgError> {
 
     // Finally, the different parties generate the master public key. No misbehaving parties, so
     // broadcast of phase 5 is None.
-    let (mk_1, sk_1) = party_1_phase_5?.finalise_with_broadcast(
+    let (mk_1, _sk_1) = party_1_phase_5?.finalise_with_broadcast(
         &[mc[1].clone(), mc[2].clone()],
         &[
             party_2_broadcast_data_5.clone(),
             party_3_broadcast_data_5.clone(),
         ],
     )?;
-    let (mk_2, sk_2) = party_2_phase_5?.finalise_with_broadcast(
+    let (mk_2, _sk_2) = party_2_phase_5?.finalise_with_broadcast(
         &[mc[0].clone(), mc[2].clone()],
         &[
             party_1_broadcast_data_5.clone(),

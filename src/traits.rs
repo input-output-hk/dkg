@@ -30,7 +30,7 @@
 //!
 //! impl Scalar for ScalarWrapper {
 //!     type Item = ScalarWrapper;
-//!     type EncodingSize = U32;
+//!     const SIZE: usize = 32;
 //!
 //!     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
 //!         Self(RScalar::random(rng))
@@ -40,10 +40,8 @@
 //!         ScalarWrapper(RScalar::from(scalar))
 //!     }
 //!
-//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
-//!         let mut array = GenericArray::default();
-//!         array.copy_from_slice(&self.to_bytes()[..]);
-//!         array
+//!     fn to_bytes(&self) -> [u8; 32] {
+//!         self.to_bytes()
 //!     }
 //!
 //!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -91,8 +89,6 @@
 //! impl PrimeGroupElement for GroupElementWrapper {
 //!     type Item = GroupElementWrapper;
 //!     type CorrespondingScalar = ScalarWrapper;
-//!     type EncodingSize = U32;
-//!     type CorrespondingScalarSize = U32;
 //!     const SIZE: usize = 32;
 //!
 //!     fn generator() -> Self {
@@ -219,7 +215,6 @@ pub trait PrimeGroupElement:
     ///
     /// Defined as future work for now.
     const SIZE: usize;
-    const ASSOCIATED_SCALAR_SIZE: usize;
 
     fn generator() -> Self;
 

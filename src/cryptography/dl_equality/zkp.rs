@@ -76,13 +76,13 @@ impl<G: PrimeGroupElement> Zkp<G> {
         [(); <G::CorrespondingScalar as Scalar>::SIZE]: ,
     {
         let mut bytes = [0u8; 2 * G::SIZE];
-        bytes.copy_from_slice(&self.challenge.to_bytes());
-        bytes.copy_from_slice(&self.response.to_bytes());
+        bytes[..G::SIZE].copy_from_slice(&self.challenge.to_bytes());
+        bytes[G::SIZE..].copy_from_slice(&self.response.to_bytes());
         bytes
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let size = G::ASSOCIATED_SCALAR_SIZE;
+        let size = <G::CorrespondingScalar as Scalar>::SIZE;
         if bytes.len() != 2 * size {
             return None;
         }
