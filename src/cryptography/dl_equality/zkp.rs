@@ -11,8 +11,12 @@
 #![allow(clippy::many_single_char_names)]
 use super::challenge_context::ChallengeContext;
 use crate::errors::ProofError;
+use crate::traits;
 use crate::traits::{PrimeGroupElement, Scalar};
+use generic_array::typenum::{Sum, Unsigned};
+use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
+use std::ops::Add;
 
 /// Proof of correct decryption.
 /// Note: if the goal is to reduce the size of a proof, it is better to store the challenge
@@ -72,6 +76,39 @@ impl<G: PrimeGroupElement> Zkp<G> {
             Err(ProofError::ZkpVerificationFailed)
         }
     }
+
+    pub fn to_bytes(
+        &self,
+    ) -> GenericArray<
+        u8,
+        Sum<
+            <G::CorrespondingScalar as Scalar>::EncodingSize,
+            <G::CorrespondingScalar as Scalar>::EncodingSize,
+        >,
+    >
+        where
+            <<<G as PrimeGroupElement>::CorrespondingScalar as traits::Scalar>::EncodingSize as Add>::Output: ArrayLength<u8>
+
+    {
+        let mut bytes = self.challenge.to_bytes().to_vec();
+        bytes.extend_from_slice(self.response.to_bytes().as_slice());
+        GenericArray::from_slice(&bytes).clone()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let size: usize =
+            <<G::CorrespondingScalar as Scalar>::EncodingSize as Unsigned>::to_usize();
+        if bytes.len() != 2 * size {
+            return None;
+        }
+        let challenge = Scalar::from_bytes(&bytes[..size])?;
+        let response = Scalar::from_bytes(&bytes[size..])?;
+
+        Some(Self {
+            challenge,
+            response,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -84,7 +121,7 @@ mod tests {
     use rand_core::SeedableRng;
 
     #[test]
-    pub fn it_works() {
+    fn it_works() {
         let mut r = ChaCha20Rng::from_seed([0u8; 32]);
 
         let dlog = Scalar::random(&mut r);
@@ -103,5 +140,27 @@ mod tests {
         assert!(proof
             .verify(&base_1, &base_faked, &point_1, &point_2)
             .is_err());
+    }
+
+    #[test]
+    fn serialisation() {
+        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
+
+        let dlog = Scalar::random(&mut r);
+        let base_1 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
+        let base_2 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
+        let point_1 = base_1 * dlog;
+        let point_2 = base_2 * dlog;
+
+        let proof =
+            Zkp::<RistrettoPoint>::generate(&base_1, &base_2, &point_1, &point_2, &dlog, &mut r);
+
+        let bytes = proof.to_bytes();
+        let deserialised = Zkp::from_bytes(&bytes);
+        assert!(deserialised.is_some());
+        let unwrapped = deserialised.unwrap();
+        assert!(unwrapped
+            .verify(&base_1, &base_2, &point_1, &point_2)
+            .is_ok())
     }
 }

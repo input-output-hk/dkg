@@ -12,8 +12,12 @@ use crate::cryptography::dl_equality::DleqZkp;
 use crate::cryptography::elgamal::{HybridCiphertext, SymmetricKey};
 use crate::dkg::procedure_keys::{MemberCommunicationKey, MemberCommunicationPublicKey};
 use crate::errors::ProofError;
-use crate::traits::PrimeGroupElement;
+use crate::traits;
+use crate::traits::{PrimeGroupElement, Scalar};
+use generic_array::typenum::Sum;
+use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
+use std::ops::Add;
 
 /// Proof of correct decryption.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +67,25 @@ where
             &symmetric_key.group_repr,
         )
     }
+
+    pub fn to_bytes(&self) -> GenericArray<
+        u8,
+        Sum<
+            <G::CorrespondingScalar as Scalar>::EncodingSize,
+            <G::CorrespondingScalar as Scalar>::EncodingSize,
+        >,
+    >
+        where
+            <<<G as PrimeGroupElement>::CorrespondingScalar as traits::Scalar>::EncodingSize as Add>::Output: ArrayLength<u8>
+    {
+        self.hybrid_dec_key_proof.to_bytes()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        DleqZkp::from_bytes(bytes).map(|x| Self {
+            hybrid_dec_key_proof: x,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -86,6 +109,35 @@ mod tests {
 
         let proof = Zkp::generate(&ciphertext, &comm_pkey, &decryption_key, &comm_key, &mut r);
         assert!(proof
+            .verify(&ciphertext, &decryption_key, &comm_pkey)
+            .is_ok())
+    }
+
+    #[test]
+    fn serialisation() {
+        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
+
+        let comm_key = MemberCommunicationKey::<RistrettoPoint>::new(&mut r);
+        let comm_pkey = comm_key.to_public();
+
+        let plaintext = [10u8; 43];
+        let ciphertext = comm_pkey.hybrid_encrypt(&plaintext, &mut r);
+
+        let decryption_key = comm_key.0.recover_symmetric_key(&ciphertext);
+
+        let proof = Zkp::<RistrettoPoint>::generate(
+            &ciphertext,
+            &comm_pkey,
+            &decryption_key,
+            &comm_key,
+            &mut r,
+        );
+
+        let bytes = proof.to_bytes();
+        let deserialised = Zkp::from_bytes(&bytes);
+        assert!(deserialised.is_some());
+        let unwrapped = deserialised.unwrap();
+        assert!(unwrapped
             .verify(&ciphertext, &decryption_key, &comm_pkey)
             .is_ok())
     }
