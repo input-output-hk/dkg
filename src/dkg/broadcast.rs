@@ -36,9 +36,9 @@ pub struct DecryptedShares<G: PrimeGroupElement> {
 /// complaint disqualifies the accused member.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MisbehavingPartiesRound1<G: PrimeGroupElement> {
-    pub(crate) accused_index: usize,
-    pub(crate) accusation_error: DkgError,
-    pub(crate) proof_accusation: ProofOfMisbehaviour<G>,
+    pub accused_pk: MemberCommunicationPublicKey<G>,
+    pub accusation_error: DkgError,
+    pub proof_accusation: ProofOfMisbehaviour<G>,
 }
 
 impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
@@ -53,7 +53,10 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
         accuser_index: usize,
         accuser_pk: &MemberCommunicationPublicKey<G>,
         accused_broadcast: &BroadcastPhase1<G>,
-    ) -> Result<(), DkgError> {
+    ) -> Result<(), DkgError>
+    where
+        [(); G::SIZE]: ,
+    {
         let respective_shares = accused_broadcast.encrypted_shares[accuser_index - 1].clone();
         // First we verify the proof
         self.proof_accusation.verify(
@@ -102,7 +105,7 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound1<G> {
 /// member's index, and the two decrypted shares which are used to validate misbehaviour.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MisbehavingPartiesRound3<G: PrimeGroupElement> {
-    pub(crate) accused_index: usize,
+    pub(crate) accused_pk: MemberCommunicationPublicKey<G>,
     pub(crate) decrypted_share: <G as PrimeGroupElement>::CorrespondingScalar,
     pub(crate) decrypted_randomness: <G as PrimeGroupElement>::CorrespondingScalar,
 }
@@ -112,8 +115,8 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
         &self,
         environment: &Environment<G>,
         accuser_index: usize,
-        randomised_committed_coefficients: &Vec<G>,
-        committed_coefficients: &Vec<G>,
+        randomised_committed_coefficients: &[G],
+        committed_coefficients: &[G],
     ) -> Result<(), DkgError> {
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
@@ -121,7 +124,7 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
 
         let failing_check = G::generator() * self.decrypted_share;
         let failing_multi_scalar =
-            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients.clone());
+            G::vartime_multiscalar_multiplication(index_pow, committed_coefficients.to_owned());
 
         let index_pow = <G::CorrespondingScalar as Scalar>::from_u64(accuser_index as u64)
             .exp_iter()
@@ -130,7 +133,7 @@ impl<G: PrimeGroupElement> MisbehavingPartiesRound3<G> {
             + environment.commitment_key.h * self.decrypted_randomness;
         let passing_multi_scalar = G::vartime_multiscalar_multiplication(
             index_pow,
-            randomised_committed_coefficients.clone(),
+            randomised_committed_coefficients.to_owned(),
         );
 
         // todo: invalid complaints should be interpreted as misbehaviour from qualified members?
@@ -193,6 +196,7 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
     ) -> Self
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         let symm_key_1 = secret_key
             .0
@@ -231,7 +235,10 @@ impl<G: PrimeGroupElement> ProofOfMisbehaviour<G> {
         encrypted_shares: &EncryptedShares<G>,
         committed_coeffs: Vec<G>,
         accuser_index: usize,
-    ) -> Result<(), DkgError> {
+    ) -> Result<(), DkgError>
+    where
+        [(); G::SIZE]: ,
+    {
         let proof1_is_err = self
             .proof_decryption_1
             .verify(

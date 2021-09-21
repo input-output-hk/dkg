@@ -1,4 +1,4 @@
-//! Implementation of the distributed key generation (DKG)
+//! Implementation of the distributed key generation (dkg)
 //! procedure presented by [Gennaro], Jarecki, Krawczyk and Rabin in
 //! "Secure distributed key generation for discrete-log based cryptosystems".
 //! The distinction with the original protocol lies in the use of hybrid
@@ -58,15 +58,15 @@
 //! # Example
 //!
 //! ```rust
-//! use DKG::dkg::{
+//! use dkg::dkg::{
 //!     committee::{DistributedKeyGeneration, Environment},
 //!     procedure_keys::MemberCommunicationKey,
 //! };
-//! use DKG::cryptography::commitment::CommitmentKey;
-//! # use DKG::errors::DkgError;
+//! use dkg::cryptography::commitment::CommitmentKey;
+//! # use dkg::errors::DkgError;
 //! use rand_core::OsRng;
 //! use curve25519_dalek::ristretto::{RistrettoPoint};
-//! # use DKG::dkg::committee::{MembersFetchedState1, MembersFetchedState3};
+//! # use dkg::dkg::fetched_state::{MembersFetchedState1, MembersFetchedState3};
 //!
 //! # fn full_run() -> Result<(), DkgError> {
 //!         let mut rng = OsRng;
@@ -82,88 +82,98 @@
 //!         let mc = [mc1.to_public(), mc2.to_public(), mc3.to_public()];
 //!
 //!         let (m1, broad_1) =
-//!             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc, 1);
+//!             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc1, &mc);
 //!         let (m2, broad_2) =
-//!             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc, 2);
+//!             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc2, &mc);
 //!         let (m3, broad_3) =
-//!             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc, 3);
+//!             DistributedKeyGeneration::<RistrettoPoint>::init(&mut rng, &environment, &mc3, &mc);
 //!
+//!         let m1_index = m1.get_index();
+//!         let m2_index = m2.get_index();
+//!         let m3_index = m3.get_index();
 //!         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
 //!         // blockchain. All parties fetched the data.
-//!         let optional_broadcasts_phase_1 = [
-//!             Some(broad_1.clone()),
-//!             Some(broad_2.clone()),
-//!             Some(broad_3.clone()),
-//!         ];
+//!         let mut broadcasts_phase_1 = [None, None, None];
+//!         broadcasts_phase_1[m1_index - 1] = Some(broad_1.clone());
+//!         broadcasts_phase_1[m2_index - 1] = Some(broad_2.clone());
+//!         broadcasts_phase_1[m3_index - 1] = Some(broad_3.clone());
 //!
-//!         // Fetched state of party 1
-//!         let fetched_state_1 = MembersFetchedState1::from_broadcast(
-//!             &environment,
-//!             1,
+//!         // Parties 1, 2, and 3 publish broad_1, broad_2, and broad_3 respectively in the
+//!         // blockchain. All parties fetched the data from other parties and proceed to the
+//!         // next round.
+//!         let (party_1_phase_2, _party_1_phase_2_broadcast_data) = m1.proceed_with_broadcast(
+//!             &[mc[1].clone(), mc[2].clone()],
 //!             &[Some(broad_2.clone()), Some(broad_3.clone())],
+//!             &mut rng,
 //!         );
-//!         
-//!         // Fetched state of party 2
-//!         let fetched_state_2 = MembersFetchedState1::from_broadcast(
-//!             &environment,
-//!             2,
-//!             &[Some(broad_1.clone()), Some(broad_3)],
+//!         let (party_2_phase_2, _party_2_phase_2_broadcast_data) = m2.proceed_with_broadcast(
+//!             &[mc[0].clone(), mc[2].clone()],
+//!             &[Some(broad_1.clone()), Some(broad_3.clone())],
+//!             &mut rng,
 //!         );
-//!         
-//!         // Fetched state of party 3
-//!         let fetched_state_3 =
-//!         MembersFetchedState1::from_broadcast(&environment, 3, &[Some(broad_1), Some(broad_2)]);
-//!
-//!         // Now we proceed to phase two.
-//!         let (party_1_phase_2, party_1_phase_2_broadcast_data) = m1.proceed(&fetched_state_1, &mut rng);
-//!         let (party_2_phase_2, party_2_phase_2_broadcast_data) = m2.proceed(&fetched_state_2, &mut rng);
-//!         let (party_3_phase_2, party_3_phase_2_broadcast_data) = m3.proceed(&fetched_state_3, &mut rng);
-//!
-//!         if party_1_phase_2_broadcast_data.is_some() || party_2_phase_2_broadcast_data.is_some() || party_3_phase_2_broadcast_data.is_some() {
-//!             // then they publish the data.
-//!         }
+//!         let (party_3_phase_2, _party_3_phase_2_broadcast_data) = m3.proceed_with_broadcast(
+//!             &[mc[0].clone(), mc[1].clone()],
+//!             &[Some(broad_1.clone()), Some(broad_2.clone())],
+//!             &mut rng,
+//!         );
 //!
 //!         // We proceed to phase three (with no input because there was no misbehaving parties).
-//!         let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
-//!         let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
-//!         let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.proceed(&[], &optional_broadcasts_phase_1);
+//!         let (party_1_phase_3, party_1_broadcast_data_3) = party_1_phase_2?.proceed(&[], &broadcasts_phase_1);
+//!         let (party_2_phase_3, party_2_broadcast_data_3) = party_2_phase_2?.proceed(&[], &broadcasts_phase_1);
+//!         let (party_3_phase_3, party_3_broadcast_data_3) = party_3_phase_2?.proceed(&[], &broadcasts_phase_1);
 //!
-//!        // Fetched state of party 1.
-//!         let fetched_state_1_phase_3 = MembersFetchedState3::from_broadcast(
-//!             &environment,
-//!             1,
+//!         // Parties broadcast data
+//!         let mut broadcasts_phase_3 = [None, None, None];
+//!         broadcasts_phase_3[m1_index - 1] = party_1_broadcast_data_3.clone();
+//!         broadcasts_phase_3[m2_index - 1] = party_2_broadcast_data_3.clone();
+//!         broadcasts_phase_3[m3_index - 1] = party_3_broadcast_data_3.clone();
+//!
+//!        // We proceed to phase four with the fetched state of the previous phase.
+//!         let (party_1_phase_4, party_1_broadcast_data_4) = party_1_phase_3?.proceed_with_broadcast(
+//!             &[mc[1].clone(), mc[2].clone()],
 //!             &[
 //!                 party_2_broadcast_data_3.clone(),
 //!                 party_3_broadcast_data_3.clone(),
 //!             ],
 //!         );
-//!
-//!         // Fetched state of party 2.
-//!         let fetched_state_2_phase_3 = MembersFetchedState3::from_broadcast(
-//!             &environment,
-//!             2,
-//!             &[party_1_broadcast_data_3.clone(), party_3_broadcast_data_3],
+//!         let (party_2_phase_4, party_2_broadcast_data_4) = party_2_phase_3?.proceed_with_broadcast(
+//!             &[mc[0].clone(), mc[2].clone()],
+//!             &[
+//!                 party_1_broadcast_data_3.clone(),
+//!                 party_3_broadcast_data_3.clone(),
+//!             ],
 //!         );
-//!
-//!         // Fetched state of party 3.
-//!         let fetched_state_3_phase_3 = MembersFetchedState3::from_broadcast(
-//!             &environment,
-//!             3,
-//!             &[party_1_broadcast_data_3.clone(), party_2_broadcast_data_3.clone()],
+//!         let (party_3_phase_4, party_3_broadcast_data_4) = party_3_phase_3?.proceed_with_broadcast(
+//!             &[mc[0].clone(), mc[1].clone()],
+//!             &[
+//!                 party_1_broadcast_data_3.clone(),
+//!                 party_2_broadcast_data_3.clone(),
+//!             ],
 //!         );
-//!         // We proceed to phase four with the fetched state of the previous phase.
-//!         let (party_1_phase_4, _party_1_broadcast_data_4) =
-//!             party_1_phase_3?.proceed(&fetched_state_1_phase_3);
-//!         let (party_2_phase_4, _party_2_broadcast_data_4) =
-//!             party_2_phase_3?.proceed(&fetched_state_2_phase_3);
-//!         let (party_3_phase_4, _party_3_broadcast_data_4) =
-//!             party_3_phase_3?.proceed(&fetched_state_3_phase_3);
 //!
 //!         // Now we proceed to phase five, where we disclose the shares of the qualified, misbehaving
 //!         // parties. There is no misbehaving parties, so broadcast of phase 4 is None.
-//!         let (party_1_phase_5, _party_1_broadcast_data_5) = party_1_phase_4?.proceed(&[]);
-//!         let (party_2_phase_5, _party_2_broadcast_data_5) = party_2_phase_4?.proceed(&[]);
-//!         let (party_3_phase_5, _party_3_broadcast_data_5) = party_3_phase_4?.proceed(&[]);
+//!         let (party_1_phase_5, party_1_broadcast_data_5) = party_1_phase_4?.proceed_with_broadcast(
+//!             &[mc[1].clone(), mc[2].clone()],
+//!             &[
+//!                 party_2_broadcast_data_4.clone(),
+//!                 party_3_broadcast_data_4.clone(),
+//!             ],
+//!             &broadcasts_phase_1,
+//!             &broadcasts_phase_3,
+//!         );
+//!         let (party_2_phase_5, party_2_broadcast_data_5) = party_2_phase_4?.proceed_with_broadcast(
+//!             &[mc[0].clone(), mc[2].clone()],
+//!             &[party_1_broadcast_data_4.clone(), party_3_broadcast_data_4],
+//!             &broadcasts_phase_1,
+//!             &broadcasts_phase_3,
+//!         );
+//!         let (party_3_phase_5, party_3_broadcast_data_5) = party_3_phase_4?.proceed_with_broadcast(
+//!             &[mc[0].clone(), mc[1].clone()],
+//!             &[party_1_broadcast_data_4, party_2_broadcast_data_4],
+//!             &broadcasts_phase_1,
+//!             &broadcasts_phase_3,
+//!         );
 //!
 //!         // Finally, the different parties generate the master public key. No misbehaving parties, so
 //!         // broadcast of phase 5 is None. This outputs the master public key and the secret shares.
@@ -178,7 +188,7 @@
 //! #
 //! #        Ok(())
 //! #    }
-//! # fn main() { assert!(full_run().is_ok()); }
+//! # fn main() { full_run().unwrap() }
 //! ```
 //!
 //!
@@ -188,6 +198,15 @@
 
 #![warn(unused, future_incompatible, nonstandard_style, rust_2018_idioms)]
 #![allow(non_snake_case)]
+// Needed for the const generics. See issue #76560 <https://github.com/rust-lang/rust/issues/76560>
+// and issue #44580 <https://github.com/rust-lang/rust/issues/44580>  for more information.
+#![allow(incomplete_features)]
+#![feature(adt_const_params)]
+#![feature(generic_const_exprs)]
+// Whenever we use a function that relies on the const generics, we include the following flag:
+// `where [T; G::SIZE]: ,`, which seems a bit unnecessary. Compilation only works with this flag,
+// and seems---https://twitter.com/ekuber/status/1372017934910943237--- that it will be no longer
+// required when stabilised. Also see here---https://github.com/rust-lang/rust/issues/68436.
 
 #[macro_use]
 mod macros;

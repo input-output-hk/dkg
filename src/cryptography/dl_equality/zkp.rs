@@ -36,6 +36,7 @@ impl<G: PrimeGroupElement> Zkp<G> {
     ) -> Self
     where
         R: CryptoRng + RngCore,
+        [(); G::SIZE]: ,
     {
         let w = G::CorrespondingScalar::random(rng);
         let announcement_1 = *base_1 * w;
@@ -51,13 +52,10 @@ impl<G: PrimeGroupElement> Zkp<G> {
     }
 
     /// Verify a DLEQ proof
-    pub fn verify(
-        &self,
-        base_1: &G,
-        base_2: &G,
-        point_1: &G,
-        point_2: &G,
-    ) -> Result<(), ProofError> {
+    pub fn verify(&self, base_1: &G, base_2: &G, point_1: &G, point_2: &G) -> Result<(), ProofError>
+    where
+        [(); G::SIZE]: ,
+    {
         let r1 = *base_1 * self.response;
         let r2 = *base_2 * self.response;
         let announcement_1 = r1 - (*point_1 * self.challenge);
@@ -72,6 +70,31 @@ impl<G: PrimeGroupElement> Zkp<G> {
             Err(ProofError::ZkpVerificationFailed)
         }
     }
+
+    pub fn to_bytes(&self) -> [u8; 2 * G::SIZE]
+    where
+        [(); <G::CorrespondingScalar as Scalar>::SIZE]: ,
+    {
+        let mut bytes = [0u8; 2 * G::SIZE];
+        bytes[..G::SIZE].copy_from_slice(&self.challenge.to_bytes());
+        bytes[G::SIZE..].copy_from_slice(&self.response.to_bytes());
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let size = <G::CorrespondingScalar as Scalar>::SIZE;
+        if bytes.len() != 2 * size {
+            return None;
+        }
+
+        let challenge = Scalar::from_bytes(&bytes[..size])?;
+        let response = Scalar::from_bytes(&bytes[size..])?;
+
+        Some(Self {
+            challenge,
+            response,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -80,11 +103,12 @@ mod tests {
     use blake2::Blake2b;
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar;
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
-    pub fn it_works() {
-        let mut r: OsRng = OsRng;
+    fn it_works() {
+        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
 
         let dlog = Scalar::random(&mut r);
         let base_1 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
@@ -102,5 +126,27 @@ mod tests {
         assert!(proof
             .verify(&base_1, &base_faked, &point_1, &point_2)
             .is_err());
+    }
+
+    #[test]
+    fn serialisation() {
+        let mut r = ChaCha20Rng::from_seed([0u8; 32]);
+
+        let dlog = Scalar::random(&mut r);
+        let base_1 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
+        let base_2 = RistrettoPoint::hash_to_group::<Blake2b>(&[0u8]);
+        let point_1 = base_1 * dlog;
+        let point_2 = base_2 * dlog;
+
+        let proof =
+            Zkp::<RistrettoPoint>::generate(&base_1, &base_2, &point_1, &point_2, &dlog, &mut r);
+
+        let bytes = proof.to_bytes();
+        let deserialised = Zkp::from_bytes(&bytes);
+        assert!(deserialised.is_some());
+        let unwrapped = deserialised.unwrap();
+        assert!(unwrapped
+            .verify(&base_1, &base_2, &point_1, &point_2)
+            .is_ok())
     }
 }

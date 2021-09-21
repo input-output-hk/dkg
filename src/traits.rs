@@ -22,7 +22,7 @@
 //! use generic_array::typenum::{U32, U64};
 //! use generic_array::GenericArray;
 //! use rand_core::{CryptoRng, RngCore};
-//! use DKG::traits::{PrimeGroupElement, Scalar};
+//! use dkg::traits::{PrimeGroupElement, Scalar};
 //!
 //! #[derive(Add, Sub, Neg, Mul, AddAssign, From, Clone, Copy, Debug, Eq, PartialEq)]
 //! #[mul(forward)]
@@ -30,7 +30,7 @@
 //!
 //! impl Scalar for ScalarWrapper {
 //!     type Item = ScalarWrapper;
-//!     type EncodingSize = U32;
+//!     const SIZE: usize = 32;
 //!
 //!     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
 //!         Self(RScalar::random(rng))
@@ -40,10 +40,8 @@
 //!         ScalarWrapper(RScalar::from(scalar))
 //!     }
 //!
-//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
-//!         let mut array = GenericArray::default();
-//!         array.copy_from_slice(&self.to_bytes()[..]);
-//!         array
+//!     fn to_bytes(&self) -> [u8; 32] {
+//!         self.to_bytes()
 //!     }
 //!
 //!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -91,7 +89,7 @@
 //! impl PrimeGroupElement for GroupElementWrapper {
 //!     type Item = GroupElementWrapper;
 //!     type CorrespondingScalar = ScalarWrapper;
-//!     type EncodingSize = U32;
+//!     const SIZE: usize = 32;
 //!
 //!     fn generator() -> Self {
 //!         Self(RISTRETTO_BASEPOINT_POINT)
@@ -105,10 +103,8 @@
 //!         GroupElementWrapper(RistrettoPoint::hash_from_bytes::<H>(input))
 //!     }
 //!
-//!     fn to_bytes(&self) -> GenericArray<u8, U32> {
-//!         let mut array = GenericArray::default();
-//!         array.copy_from_slice(&self.0.compress().to_bytes()[..]);
-//!         array
+//!     fn to_bytes(&self) -> [u8; Self::SIZE] {
+//!         self.0.compress().to_bytes()
 //!     }
 //!
 //!     fn from_bytes(bytes: &[u8]) -> Option<Self> {
@@ -134,7 +130,6 @@
 
 use blake2::Digest;
 use generic_array::typenum::U64;
-use generic_array::{ArrayLength, GenericArray};
 use rand_core::{CryptoRng, RngCore};
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
@@ -151,7 +146,7 @@ pub trait Scalar:
     + AddAssign<Self>
 {
     type Item;
-    type EncodingSize: ArrayLength<u8>;
+    const SIZE: usize;
 
     fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self;
 
@@ -159,7 +154,7 @@ pub trait Scalar:
 
     fn from_u64(scalar: u64) -> Self;
 
-    fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
+    fn to_bytes(&self) -> [u8; Self::SIZE];
 
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 
@@ -218,8 +213,8 @@ pub trait PrimeGroupElement:
     /// is expected to be included in future versions, it's usage is still quite limited. ,
     /// https://github.com/rust-lang/rust/issues/60551
     ///
-    /// Defined as future work for now.
-    type EncodingSize: ArrayLength<u8>;
+    /// Using nightly for now.
+    const SIZE: usize;
 
     fn generator() -> Self;
 
@@ -227,7 +222,7 @@ pub trait PrimeGroupElement:
 
     fn hash_to_group<H: Digest<OutputSize = U64> + Default>(input: &[u8]) -> Self;
 
-    fn to_bytes(&self) -> GenericArray<u8, Self::EncodingSize>;
+    fn to_bytes(&self) -> [u8; Self::SIZE];
 
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 

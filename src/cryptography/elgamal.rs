@@ -134,6 +134,7 @@ impl<G: PrimeGroupElement> PublicKey<G> {
     pub(crate) fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
     where
         R: RngCore + CryptoRng,
+        [(); G::SIZE]: ,
     {
         let encryption_randomness = G::CorrespondingScalar::random(rng);
         let symmetric_key = SymmetricKey {
@@ -142,6 +143,15 @@ impl<G: PrimeGroupElement> PublicKey<G> {
         let e1 = G::generator() * encryption_randomness;
         let e2 = symmetric_key.process(message).into_boxed_slice();
         HybridCiphertext { e1, e2 }
+    }
+
+    /// Convert `PublicKey` to its byte representation
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
+        self.pk.to_bytes()
+    }
+    /// Try to convert a `PublicKey` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        G::from_bytes(bytes).map(|pk| Self { pk })
     }
 }
 
@@ -169,7 +179,10 @@ impl<G: PrimeGroupElement> SecretKey<G> {
 
     #[allow(dead_code)]
     /// Decrypt a message using hybrid decryption
-    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
+    pub(crate) fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8>
+    where
+        [(); G::SIZE]: ,
+    {
         self.recover_symmetric_key(ciphertext)
             .process(&ciphertext.e2)
     }
@@ -177,7 +190,10 @@ impl<G: PrimeGroupElement> SecretKey<G> {
 
 impl<G: PrimeGroupElement> SymmetricKey<G> {
     // Initialise encryption, by hashing the group element
-    fn initialise_encryption(&self) -> ChaCha20 {
+    fn initialise_encryption(&self) -> ChaCha20
+    where
+        [(); G::SIZE]: ,
+    {
         let h = Blake2b::new().chain(&self.group_repr.to_bytes()).finalize();
         let key = GenericArray::from_slice(&h[0..32]);
         let nonce = GenericArray::from_slice(&h[32..44]);
@@ -185,11 +201,24 @@ impl<G: PrimeGroupElement> SymmetricKey<G> {
     }
 
     // Encrypt/decrypt a message using the symmetric key
-    pub fn process(&self, m: &[u8]) -> Vec<u8> {
+    pub fn process(&self, m: &[u8]) -> Vec<u8>
+    where
+        [(); G::SIZE]: ,
+    {
         let mut key = self.initialise_encryption();
         let mut dat = m.to_vec();
         key.apply_keystream(&mut dat);
         dat
+    }
+
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
+        self.group_repr.to_bytes()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        Some(Self {
+            group_repr: G::from_bytes(bytes)?,
+        })
     }
 }
 
@@ -227,6 +256,28 @@ impl<G: PrimeGroupElement> Ciphertext<G> {
 
     pub fn elements(&self) -> (&G, &G) {
         (&self.e1, &self.e2)
+    }
+
+    pub fn to_bytes(&self) -> [u8; 2 * G::SIZE]
+    where
+        [(); G::SIZE]: ,
+    {
+        let mut ctxts = [0u8; 2 * G::SIZE];
+        ctxts[..G::SIZE].copy_from_slice(&self.e1.to_bytes());
+        ctxts[G::SIZE..].copy_from_slice(&self.e2.to_bytes());
+        ctxts
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let size: usize = G::SIZE;
+        if bytes.len() != 2 * size {
+            return None;
+        }
+
+        let e1 = G::from_bytes(&bytes[..size])?;
+        let e2 = G::from_bytes(&bytes[size..])?;
+
+        Some(Self { e1, e2 })
     }
 }
 
@@ -289,7 +340,8 @@ mod tests {
     use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::scalar::Scalar as RScalar;
 
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     fn zero() {
@@ -302,7 +354,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_point() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         for n in 1..5 {
             let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
@@ -315,7 +367,7 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         for n in 1..5 {
             let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
@@ -328,7 +380,7 @@ mod tests {
 
     #[test]
     fn symmetric_encrypt_decrypt() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
         let k = SecretKey::<RistrettoPoint>::generate(&mut rng);
         let k = Keypair::<RistrettoPoint>::from_secretkey(k);
 
@@ -342,7 +394,7 @@ mod tests {
 
     #[test]
     fn linear_ops_ctxts() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
 
         let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
         let m = RScalar::from_u64(24);
@@ -360,5 +412,34 @@ mod tests {
         let cipher_7 = &cipher * &RScalar::from_u64(2);
         let r_7 = keypair.secret_key.decrypt_point(&cipher_7);
         assert_eq!(RScalar::from_u64(48) * RistrettoPoint::generator(), r_7);
+    }
+
+    #[test]
+    fn key_serialisation() {
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+        let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
+
+        let serialised = keypair.public_key.to_bytes();
+        let deserialised = PublicKey::from_bytes(&serialised);
+
+        assert!(deserialised.is_some());
+        let unwrapped = deserialised.unwrap();
+        assert_eq!(unwrapped, keypair.public_key);
+    }
+
+    #[test]
+    fn ctxts_serialisation() {
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+
+        let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let m = RScalar::from_u64(24);
+        let cipher = keypair.public_key.encrypt(&m, &mut rng);
+
+        let serialised = cipher.to_bytes();
+        let deserialised = Ciphertext::from_bytes(&serialised);
+
+        assert!(deserialised.is_some());
+        let unwrapped = deserialised.unwrap();
+        assert_eq!(cipher, unwrapped);
     }
 }

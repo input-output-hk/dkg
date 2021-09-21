@@ -23,31 +23,9 @@ pub struct MemberCommunicationKey<G: PrimeGroupElement>(pub(crate) SecretKey<G>)
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MemberCommunicationPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
 
-impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let self_bytes = self.0.pk.to_bytes();
-        let other_bytes = other.0.pk.to_bytes();
-
-        let mut ordering = Ordering::Equal;
-        for (s, o) in self_bytes.iter().zip(other_bytes.iter()) {
-            ordering = s.cmp(o);
-            if ordering != Ordering::Equal {
-                break;
-            }
-        }
-        ordering
-    }
-}
-
-impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// The overall committee public key used for everyone to encrypt their vote to.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MasterPublicKey<G: PrimeGroupElement>(pub(crate) PublicKey<G>);
+pub struct MasterPublicKey<G: PrimeGroupElement>(pub PublicKey<G>);
 
 impl<G: PrimeGroupElement> MemberSecretShare<G> {
     pub fn to_public(&self) -> MemberPublicShare<G> {
@@ -57,11 +35,16 @@ impl<G: PrimeGroupElement> MemberSecretShare<G> {
     }
 }
 
-// impl<G: PrimeGroupElement> MemberPublicShare<G> {
-//     pub fn to_bytes(&self) -> Vec<u8> {
-//         self.0.to_bytes()
-//     }
-// }
+impl<G: PrimeGroupElement> MemberPublicShare<G> {
+    /// Convert `MemberPublicShare` to its byte representation
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
+        self.0.to_bytes()
+    }
+    /// Try to convert a `MemberPublicShare` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        PublicKey::from_bytes(bytes).map(Self)
+    }
+}
 
 impl<G: PrimeGroupElement> From<PublicKey<G>> for MemberPublicShare<G> {
     fn from(pk: PublicKey<G>) -> MemberPublicShare<G> {
@@ -81,7 +64,10 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
         })
     }
 
-    pub fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8> {
+    pub fn hybrid_decrypt(&self, ciphertext: &HybridCiphertext<G>) -> Vec<u8>
+    where
+        [(); G::SIZE]: ,
+    {
         self.0.hybrid_decrypt(ciphertext)
     }
 
@@ -91,7 +77,10 @@ impl<G: PrimeGroupElement> MemberCommunicationKey<G> {
     ) -> (
         Option<G::CorrespondingScalar>,
         Option<G::CorrespondingScalar>,
-    ) {
+    )
+    where
+        [(); G::SIZE]: ,
+    {
         let decrypted_share = <G::CorrespondingScalar as Scalar>::from_bytes(
             &self.hybrid_decrypt(&shares.encrypted_share),
         );
@@ -113,8 +102,58 @@ impl<G: PrimeGroupElement> MemberCommunicationPublicKey<G> {
     pub fn hybrid_encrypt<R>(&self, message: &[u8], rng: &mut R) -> HybridCiphertext<G>
     where
         R: RngCore + CryptoRng,
+        [(); G::SIZE]: ,
     {
         self.0.hybrid_encrypt(message, rng)
+    }
+    /// This function returns the index of `self` (from 1 to array.len()) with respect to the
+    /// input `array`.
+    /// todo: is expect right here? feels unnecessary to have to handle the result all across the
+    /// code base. The check of using messages from participants should be done at a different layer.
+    pub fn get_index(&self, array: &[Self]) -> usize {
+        array
+            .iter()
+            .position(|x| x == self)
+            .expect("This party is not part of the participants. Its messaged should not be used.")
+            + 1
+    }
+    /// Convert `MemberCommunicationPublicKey` to its byte representation
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
+        self.0.to_bytes()
+    }
+    /// Try to convert a `MemberCommunicationPublicKey` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        PublicKey::from_bytes(bytes).map(Self)
+    }
+}
+
+impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G>
+where
+    [(); G::SIZE]: ,
+{
+    /// We implement `Ord` for public keys to avoid having to handle indices in the dkg. This can
+    /// really be anything.
+    fn cmp(&self, other: &Self) -> Ordering {
+        let self_bytes = self.0.to_bytes();
+        let other_bytes = other.0.to_bytes();
+
+        let mut ordering = Ordering::Equal;
+        for (s, o) in self_bytes.iter().zip(other_bytes.iter()) {
+            ordering = s.cmp(o);
+            if ordering != Ordering::Equal {
+                break;
+            }
+        }
+        ordering
+    }
+}
+
+impl<G: PrimeGroupElement> PartialOrd for MemberCommunicationPublicKey<G>
+where
+    [(); G::SIZE]: ,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -132,6 +171,15 @@ impl<G: PrimeGroupElement> MasterPublicKey<G> {
     pub fn as_raw(&self) -> &PublicKey<G> {
         &self.0
     }
+
+    /// Convert `MasterPublicKey` to its byte representation
+    pub fn to_bytes(&self) -> [u8; G::SIZE] {
+        self.0.to_bytes()
+    }
+    /// Try to convert a `MasterPublicKey` from a byte array
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        PublicKey::from_bytes(bytes).map(Self)
+    }
 }
 
 #[cfg(test)]
@@ -139,11 +187,12 @@ mod tests {
     use super::*;
     use crate::cryptography::elgamal::Keypair;
     use curve25519_dalek::ristretto::RistrettoPoint;
-    use rand_core::OsRng;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
 
     #[test]
     fn from_fns() {
-        let mut rng = OsRng;
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
         let keypair = Keypair::<RistrettoPoint>::generate(&mut rng);
         let sk_comm = MemberCommunicationKey::<RistrettoPoint>(keypair.secret_key);
         let pk_comm = MemberCommunicationPublicKey::<RistrettoPoint>(keypair.public_key);
@@ -151,5 +200,24 @@ mod tests {
         let pk_comm_exp = sk_comm.to_public();
 
         assert_eq!(pk_comm, pk_comm_exp);
+    }
+
+    #[test]
+    fn get_index() {
+        let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+        let keypair_1 = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let pk_comm_1 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_1.public_key);
+
+        let keypair_2 = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let pk_comm_2 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_2.public_key);
+
+        let keypair_3 = Keypair::<RistrettoPoint>::generate(&mut rng);
+        let pk_comm_3 = MemberCommunicationPublicKey::<RistrettoPoint>(keypair_3.public_key);
+
+        let array = [pk_comm_1.clone(), pk_comm_2.clone(), pk_comm_3.clone()];
+
+        assert_eq!(pk_comm_1.get_index(&array), 1);
+        assert_eq!(pk_comm_2.get_index(&array), 2);
+        assert_eq!(pk_comm_3.get_index(&array), 3);
     }
 }
