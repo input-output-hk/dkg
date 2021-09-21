@@ -763,7 +763,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase5> {
         self.finalise(&processed_data)
     }
 
-    /// This phase transition finalises the DKG protocol. It takes as input the broadcast complaints
+    /// This phase transition finalises the dkg protocol. It takes as input the broadcast complaints
     /// from the previous phase, and returns the master public key using the key shares of the
     /// honest parties, and reconstructing the shares of the misbehaving parties. This last point
     /// is the main essence of this function, as we need to perform the lagrange interpolation for

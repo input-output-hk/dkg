@@ -131,7 +131,7 @@ impl<G: PrimeGroupElement> Ord for MemberCommunicationPublicKey<G>
 where
     [(); G::SIZE]: ,
 {
-    /// We implement `Ord` for public keys to avoid having to handle indices in the DKG. This can
+    /// We implement `Ord` for public keys to avoid having to handle indices in the dkg. This can
     /// really be anything.
     fn cmp(&self, other: &Self) -> Ordering {
         let self_bytes = self.0.to_bytes();

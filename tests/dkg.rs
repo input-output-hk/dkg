@@ -1,14 +1,14 @@
 use curve25519_dalek::ristretto::RistrettoPoint;
-use rand_chacha::ChaCha20Rng;
-use rand_core::SeedableRng;
-use DKG::dkg::committee::{DistributedKeyGeneration, Environment};
-use DKG::dkg::fetched_state::{
+use dkg::dkg::committee::{DistributedKeyGeneration, Environment};
+use dkg::dkg::fetched_state::{
     FetchedMisbehaviourComplaints, MembersFetchedState1, MembersFetchedState3,
     MembersFetchedState4, MembersFetchedState5,
 };
-use DKG::dkg::procedure_keys::MemberCommunicationKey;
-use DKG::errors::DkgError;
-use DKG::traits::PrimeGroupElement;
+use dkg::dkg::procedure_keys::MemberCommunicationKey;
+use dkg::errors::DkgError;
+use dkg::traits::PrimeGroupElement;
+use rand_chacha::ChaCha20Rng;
+use rand_core::SeedableRng;
 
 #[test]
 fn valid_phase_2() {

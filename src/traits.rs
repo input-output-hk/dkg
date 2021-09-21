@@ -22,7 +22,7 @@
 //! use generic_array::typenum::{U32, U64};
 //! use generic_array::GenericArray;
 //! use rand_core::{CryptoRng, RngCore};
-//! use DKG::traits::{PrimeGroupElement, Scalar};
+//! use dkg::traits::{PrimeGroupElement, Scalar};
 //!
 //! #[derive(Add, Sub, Neg, Mul, AddAssign, From, Clone, Copy, Debug, Eq, PartialEq)]
 //! #[mul(forward)]
@@ -213,7 +213,7 @@ pub trait PrimeGroupElement:
     /// is expected to be included in future versions, it's usage is still quite limited. ,
     /// https://github.com/rust-lang/rust/issues/60551
     ///
-    /// Defined as future work for now.
+    /// Using nightly for now.
     const SIZE: usize;
 
     fn generator() -> Self;

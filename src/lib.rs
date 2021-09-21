@@ -1,4 +1,4 @@
-//! Implementation of the distributed key generation (DKG)
+//! Implementation of the distributed key generation (dkg)
 //! procedure presented by [Gennaro], Jarecki, Krawczyk and Rabin in
 //! "Secure distributed key generation for discrete-log based cryptosystems".
 //! The distinction with the original protocol lies in the use of hybrid
@@ -58,15 +58,15 @@
 //! # Example
 //!
 //! ```rust
-//! use DKG::dkg::{
+//! use dkg::dkg::{
 //!     committee::{DistributedKeyGeneration, Environment},
 //!     procedure_keys::MemberCommunicationKey,
 //! };
-//! use DKG::cryptography::commitment::CommitmentKey;
-//! # use DKG::errors::DkgError;
+//! use dkg::cryptography::commitment::CommitmentKey;
+//! # use dkg::errors::DkgError;
 //! use rand_core::OsRng;
 //! use curve25519_dalek::ristretto::{RistrettoPoint};
-//! # use DKG::dkg::fetched_state::{MembersFetchedState1, MembersFetchedState3};
+//! # use dkg::dkg::fetched_state::{MembersFetchedState1, MembersFetchedState3};
 //!
 //! # fn full_run() -> Result<(), DkgError> {
 //!         let mut rng = OsRng;
@@ -203,6 +203,10 @@
 #![allow(incomplete_features)]
 #![feature(adt_const_params)]
 #![feature(generic_const_exprs)]
+// Whenever we use a function that relies on the const generics, we include the following flag:
+// `where [T; G::SIZE]: ,`, which seems a bit unnecessary. Compilation only works with this flag,
+// and seems---https://twitter.com/ekuber/status/1372017934910943237--- that it will be no longer
+// required when stabilised. Also see here---https://github.com/rust-lang/rust/issues/68436.
 
 #[macro_use]
 mod macros;

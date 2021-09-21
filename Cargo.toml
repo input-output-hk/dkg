@@ -1,5 +1,5 @@
 [package]
-name = "DKG"
+name = "dkg"
 version = "0.1.0"
 authors = ["iquerejeta <querejeta.azurmendi@iohk.io>"]
 edition = "2018"
