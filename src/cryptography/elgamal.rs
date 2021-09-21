@@ -201,10 +201,7 @@ impl<G: PrimeGroupElement> SymmetricKey<G> {
     }
 
     // Encrypt/decrypt a message using the symmetric key
-    pub fn process(&self, m: &[u8]) -> Vec<u8>
-    where
-        [(); G::SIZE]: ,
-    {
+    pub fn process(&self, m: &[u8]) -> Vec<u8> {
         let mut key = self.initialise_encryption();
         let mut dat = m.to_vec();
         key.apply_keystream(&mut dat);

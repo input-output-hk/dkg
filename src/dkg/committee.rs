@@ -410,7 +410,7 @@ impl<G: PrimeGroupElement> Phases<G, Phase2> {
                             &self.state.environment,
                             broadcaster_index,
                             &self.state.members_pks[broadcaster_index - 1],
-                            &broadcast_message,
+                            broadcast_message,
                         )
                         .is_ok()
                     {

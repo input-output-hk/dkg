@@ -10,7 +10,6 @@ generic-array = "0.14"
 blake2 = "0.9.1"
 chacha20 = "0.7.2"
 curve25519-dalek = "3"
-serde = "1"
 
 [dev-dependencies]
 rand = "0.7"
